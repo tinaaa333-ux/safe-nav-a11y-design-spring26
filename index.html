@@ -4,6 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>SafeNav – Accessible Navigation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -509,38 +511,7 @@
   <!-- ══ SCREEN 3: Navigation ══ -->
   <div id="screen-nav" class="screen">
     <div class="map-half">
-      <svg class="map-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
-        <rect width="400" height="400" fill="#F7F7F7"/>
-        <rect x="100" y="0" width="50" height="400" fill="#D0D5DD"/>
-        <rect x="0" y="200" width="400" height="50" fill="#D0D5DD"/>
-        <rect x="95" y="0" width="8" height="400" fill="#E5E7EB"/>
-        <rect x="147" y="0" width="8" height="400" fill="#E5E7EB"/>
-        <rect x="0" y="195" width="400" height="8" fill="#E5E7EB"/>
-        <rect x="0" y="247" width="400" height="8" fill="#E5E7EB"/>
-        <rect x="10" y="10" width="80" height="180" fill="#D0D5DD" opacity="0.4"/>
-        <rect x="160" y="10" width="230" height="180" fill="#D0D5DD" opacity="0.4"/>
-        <rect x="10" y="255" width="80" height="135" fill="#D0D5DD" opacity="0.4"/>
-        <rect x="160" y="255" width="230" height="135" fill="#D0D5DD" opacity="0.4"/>
-        <rect x="110" y="218" width="10" height="14" fill="#111"/>
-        <rect x="110" y="238" width="10" height="14" fill="#111"/>
-        <rect x="125" y="218" width="10" height="14" fill="#111"/>
-        <rect x="125" y="238" width="10" height="14" fill="#111"/>
-        <rect x="140" y="218" width="10" height="14" fill="#111"/>
-        <rect x="140" y="238" width="10" height="14" fill="#111"/>
-        <circle cx="125" cy="210" r="10" fill="#1E5EFF"/>
-        <text x="125" y="215" text-anchor="middle" fill="white" font-size="12" font-weight="bold">✕</text>
-        <path d="M117 350 L117 240" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round"/>
-        <path d="M117 240 L125 225 L163 220" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8,4"/>
-        <path d="M163 220 L163 80" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round"/>
-        <path d="M163 80 L163 60 L173 50 L163 40 L153 50 L163 60 Z" fill="#1E5EFF" stroke="white" stroke-width="2"/>
-        <rect id="sidewalkHighlight" x="95" y="290" width="8" height="120" fill="#1E5EFF" opacity="0.4"/>
-        <circle id="locHalo1" cx="117" cy="350" r="24" fill="#1E5EFF" opacity="0.15">
-          <animate attributeName="opacity" values="0.15;0.3;0.15" dur="2s" repeatCount="indefinite"/>
-        </circle>
-        <circle id="locHalo2" cx="117" cy="350" r="16" fill="#1E5EFF" opacity="0.3"/>
-        <circle id="locDot" cx="117" cy="350" r="10" fill="#1E5EFF" stroke="white" stroke-width="3"/>
-        <circle id="locCenter" cx="117" cy="350" r="4" fill="white"/>
-      </svg>
+      <div id="leaflet-map" style="width:100%;height:100%;"></div>
 
       <div class="map-label">
         <div class="on-lbl">On</div>
@@ -661,7 +632,16 @@
 
     /* ── State ── */
     let currentDestination = '';
+    let currentPolyline = null;
+    let leafletMap = null;
     let navTimers = [];
+
+    /* ── Demo polyline (Somerville/Medford area) used until backend is live ── */
+    const DEMO_POLYLINE = [
+      [42.3876, -71.1190], [42.3885, -71.1178], [42.3897, -71.1163],
+      [42.3912, -71.1148], [42.3928, -71.1132], [42.3944, -71.1115],
+      [42.3958, -71.1098], [42.3971, -71.1078], [42.3981, -71.1061],
+    ];
 
     /* ── Screen routing ── */
     function showScreen(id) {
@@ -710,8 +690,8 @@
           body: JSON.stringify({ start, destination: dest }),
         });
         if (!res.ok) throw new Error(`Server error ${res.status}`);
-        // const routes = await res.json();
-        // TODO: populate route cards with real data from `routes`
+        const data = await res.json();
+        currentPolyline = data.polyline;
 
         currentDestination = dest;
         document.getElementById('routeDestLabel').textContent = 'To ' + dest;
@@ -727,47 +707,42 @@
 
     /* ── Screen 2 logic ── */
     function goToNav(routeId) {
-      startNavigation(routeId);
       showScreen('screen-nav');
+      // Leaflet needs the container to be visible before initializing
+      setTimeout(() => initMap(currentPolyline || DEMO_POLYLINE), 50);
     }
 
-    /* ── Screen 3 logic ── */
-    const navStates = [
-      { locX:117, locY:350, hlX:95,  hlY:290, side:'left',  sideInstr:'Stay on left side',                    instr:'Continue straight', dist:'200 ft', time:'12 min' },
-      { locX:117, locY:280, hlX:95,  hlY:220, side:'left',  sideInstr:'Switch to right sidewalk at crosswalk', instr:'Continue straight', dist:'100 ft', time:'11 min' },
-      { locX:117, locY:240, hlX:95,  hlY:180, side:'left',  sideInstr:'Move to right side after crossing',     instr:'Cross at crosswalk', dist:'50 ft',  time:'11 min', terrain:true },
-      { locX:163, locY:220, hlX:147, hlY:160, side:'right', sideInstr:'Stay on right side',                    instr:'Continue straight', dist:'150 ft', time:'10 min' },
-    ];
-
-    function applyNavState(s) {
-      ['locDot','locCenter','locHalo1','locHalo2'].forEach(id => {
-        const el = document.getElementById(id);
-        el.setAttribute('cx', s.locX); el.setAttribute('cy', s.locY);
-      });
-      const hl = document.getElementById('sidewalkHighlight');
-      hl.setAttribute('x', s.hlX); hl.setAttribute('y', s.hlY);
-      document.getElementById('sidewalkInstruction').textContent = s.sideInstr;
-      document.getElementById('instructionText').textContent = s.instr;
-      document.getElementById('distanceText').textContent = 'in ' + s.dist;
-      document.getElementById('timeVal').textContent = s.time;
-      document.getElementById('sidewalkSideLabel').textContent = s.side.toUpperCase() + ' SIDE';
-      document.getElementById('sidewalkArrow').innerHTML = s.side === 'left'
-        ? '<path d="M15 4 L7 12 L15 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
-        : '<path d="M9 4 L17 12 L9 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
-      if (s.terrain) {
-        document.getElementById('terrainAlert').classList.remove('hidden');
-        setTimeout(() => document.getElementById('terrainAlert').classList.add('hidden'), 3000);
+    /* ── Screen 3: Leaflet map ── */
+    function initMap(coords) {
+      if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
       }
-    }
 
-    function startNavigation(routeId) {
-      navTimers.forEach(clearTimeout);
-      navTimers = [];
-      applyNavState(navStates[0]);
-      const delays = [4000, 8000, 12000];
-      delays.forEach((d, i) => {
-        navTimers.push(setTimeout(() => applyNavState(navStates[i + 1]), d));
-      });
+      leafletMap = L.map('leaflet-map', { zoomControl: false });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(leafletMap);
+
+      // Draw the route polyline
+      const poly = L.polyline(coords, {
+        color: '#1E5EFF', weight: 6, opacity: 0.9, lineJoin: 'round',
+      }).addTo(leafletMap);
+
+      // Start marker (blue dot)
+      L.circleMarker(coords[0], {
+        radius: 9, fillColor: '#1E5EFF', color: 'white', weight: 3, fillOpacity: 1,
+      }).addTo(leafletMap);
+
+      // End marker (green dot)
+      L.circleMarker(coords[coords.length - 1], {
+        radius: 9, fillColor: '#10B981', color: 'white', weight: 3, fillOpacity: 1,
+      }).addTo(leafletMap);
+
+      // Zoom map to fit the full route
+      leafletMap.fitBounds(poly.getBounds(), { padding: [40, 40] });
     }
 
     function goToCelebration() {
