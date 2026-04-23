@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SafeNav – Accessible Navigation</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #fff; color: #111;
+      max-width: 430px; margin: 0 auto; min-height: 100vh;
+    }
+
+    /* ── Screen management ── */
+    .screen { display: none; }
+    .screen.active { display: flex; flex-direction: column; }
+
+
+    /* ══════════════════════════════
+       SCREEN 1 — Start
+    ══════════════════════════════ */
+    #screen-start { min-height: 100vh; }
+
+    .start-header { padding: 64px 24px 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+    .brand h1 { font-size: 36px; font-weight: 900; color: #1E5EFF; line-height: 1; }
+    .brand p { font-size: 14px; color: #4A4A4A; font-weight: 500; }
+    .page-title { display: flex; align-items: center; gap: 10px; }
+    .page-title h2 { font-size: 28px; font-weight: 600; color: #111; }
+
+    .start-main { padding: 0 24px 160px; flex: 1; }
+    .section-label { font-size: 16px; font-weight: 500; color: #111; margin-bottom: 12px; }
+
+    .current-location {
+      background: #F2F4F7; border: 2px solid #D0D5DD; border-radius: 16px;
+      padding: 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+    }
+    .pulse-dot {
+      width: 12px; height: 12px; border-radius: 50%; background: #1E5EFF;
+      flex-shrink: 0; animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+    .input-wrap { position: relative; }
+    .input-wrap svg {
+      position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+      width: 24px; height: 24px; color: #4A4A4A; pointer-events: none;
+    }
+    .input-wrap input {
+      width: 100%; padding: 20px 24px 20px 56px; font-size: 16px;
+      border: 2px solid #D0D5DD; border-radius: 16px; color: #111;
+      background: #fff; outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    .input-wrap input:focus { border-color: #1E5EFF; box-shadow: 0 0 0 4px rgba(30,94,255,.1); }
+    .input-wrap input::placeholder { color: #aaa; }
+
+    .dest-section { margin-bottom: 24px; }
+    .saved-section { margin-bottom: 32px; }
+    .locations-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .loc-card {
+      background: #F2F4F7; border: 2px solid #D0D5DD; border-radius: 16px;
+      padding: 16px; cursor: pointer; text-align: left; width: 100%;
+      transition: border-color .2s, background .2s;
+    }
+    .loc-card:hover { border-color: #1E5EFF; }
+    .loc-card.active { background: #F0F5FF; border-color: #1E5EFF; }
+    .loc-emoji { font-size: 28px; display: block; margin-bottom: 8px; }
+    .loc-name { font-size: 15px; font-weight: 700; color: #111; display: block; }
+    .loc-addr { font-size: 13px; color: #4A4A4A; display: block; margin-top: 2px; }
+
+    .prefs { margin-bottom: 32px; }
+    .pref-row {
+      background: #F2F4F7; border: 2px solid #D0D5DD; border-radius: 16px;
+      padding: 20px; display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; cursor: pointer; width: 100%; text-align: left;
+      transition: border-color .2s;
+    }
+    .pref-row.on { border-color: #1E5EFF; }
+    .pref-label { font-size: 18px; font-weight: 500; color: #111; }
+    .toggle-track {
+      width: 60px; height: 34px; border-radius: 34px; background: #6B7280;
+      position: relative; transition: background .25s; flex-shrink: 0;
+    }
+    .toggle-track.on { background: #1E5EFF; }
+    .toggle-thumb {
+      width: 26px; height: 26px; border-radius: 50%; background: white;
+      position: absolute; top: 4px; left: 4px; transition: transform .25s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    .toggle-track.on .toggle-thumb { transform: translateX(26px); }
+
+    .start-wrap {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px; padding: 16px 24px 32px;
+      background: linear-gradient(to top, #fff 70%, transparent);
+    }
+    .start-btn {
+      width: 100%; padding: 22px; border-radius: 16px; border: none;
+      background: #D0D5DD; color: #fff; font-size: 18px; font-weight: 600;
+      cursor: not-allowed; transition: background .2s;
+    }
+    .start-btn.active {
+      background: #1E5EFF; cursor: pointer;
+      box-shadow: 0 8px 24px rgba(30,94,255,.35);
+    }
+    .start-btn.active:hover { background: #1650EE; }
+
+
+    /* ══════════════════════════════
+       SCREEN 2 — Route Options
+    ══════════════════════════════ */
+    #screen-routes { padding: 64px 24px 48px; min-height: 100vh; }
+
+    .back-btn {
+      background: none; border: none; cursor: pointer; padding: 8px;
+      margin-bottom: 16px; display: flex; align-items: center;
+      border-radius: 12px; transition: background .15s; margin-left: -8px;
+    }
+    .back-btn:hover { background: #F2F4F7; }
+
+    .route-page-header { margin-bottom: 28px; }
+    .route-page-header h1 { font-size: 26px; font-weight: 800; color: #111; margin-bottom: 4px; }
+    .route-page-header p { font-size: 16px; color: #4A4A4A; }
+
+    .route-card {
+      background: #F0F5FF; border: 2px solid #1E5EFF; border-radius: 18px;
+      padding: 22px; margin-bottom: 16px; cursor: pointer; width: 100%;
+      text-align: left; transition: border-width .15s, transform .15s, box-shadow .15s;
+    }
+    .route-card:hover {
+      border-width: 3px; transform: scale(1.02);
+      box-shadow: 0 8px 24px rgba(30,94,255,.15);
+    }
+    .card-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 12px; margin-bottom: 14px;
+    }
+    .card-left { display: flex; align-items: flex-start; gap: 14px; }
+    .card-title h2 { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 2px; }
+    .card-title p { font-size: 14px; color: #4A4A4A; }
+    .time-badge {
+      background: #1E5EFF; color: white; border-radius: 10px;
+      padding: 8px 14px; font-size: 15px; font-weight: 700;
+      white-space: nowrap; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    }
+    .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tag {
+      background: #1E5EFF; color: white; border-radius: 20px;
+      padding: 6px 14px; font-size: 13px; font-weight: 600;
+    }
+    .card-divider { border: none; border-top: 1px solid rgba(30,94,255,.2); margin-bottom: 14px; }
+    .stats { display: flex; gap: 24px; }
+    .stat { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #111; font-weight: 500; }
+
+
+    /* ══════════════════════════════
+       SCREEN 3 — Navigation
+    ══════════════════════════════ */
+    #screen-nav { height: 100vh; overflow: hidden; }
+
+    .map-half { height: 50vh; position: relative; background: #F7F7F7; flex-shrink: 0; }
+    .map-half svg.map-svg { width: 100%; height: 100%; }
+
+    .map-label {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(255,255,255,.98); border-radius: 12px;
+      padding: 10px 16px; box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    .map-label .on-lbl { font-size: 12px; color: #4A4A4A; }
+    .map-label .street { font-size: 18px; font-weight: 600; color: #111; }
+
+    .time-chip {
+      position: absolute; top: 16px; right: 16px;
+      background: #1E5EFF; border-radius: 12px;
+      padding: 10px 16px; box-shadow: 0 2px 8px rgba(30,94,255,.3);
+    }
+    .time-chip .arr-lbl { font-size: 12px; color: rgba(255,255,255,.85); }
+    .time-chip .arr-val { font-size: 18px; font-weight: 700; color: white; }
+
+    .map-ctrl {
+      position: absolute; top: 90px;
+      background: white; border: none; border-radius: 12px;
+      padding: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .map-ctrl:hover { background: #F2F4F7; }
+    .map-ctrl.left { left: 16px; }
+    .map-ctrl.right { right: 16px; }
+
+    .arrived-btn {
+      position: absolute; bottom: 72px; right: 16px;
+      background: #10B981; color: white; border: none; border-radius: 12px;
+      padding: 10px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(16,185,129,.4); transition: opacity .15s;
+    }
+    .arrived-btn:hover { opacity: .9; }
+
+    .sidewalk-badge {
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: #1E5EFF; color: white; border-radius: 999px;
+      padding: 10px 24px; display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 4px 16px rgba(30,94,255,.4); border: 2px solid white; white-space: nowrap;
+    }
+    .sidewalk-badge span { font-size: 16px; font-weight: 700; text-transform: uppercase; }
+
+    .nav-half { flex: 1; display: flex; flex-direction: column; background: white; overflow: hidden; }
+    .sidewalk-bar { background: #1E5EFF; margin: 16px 24px 0; border-radius: 16px; padding: 16px 20px; }
+    .sidewalk-bar p { font-size: 20px; font-weight: 700; color: white; text-align: center; }
+    .direction-area {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 0 24px;
+    }
+    .instruction-text { font-size: 42px; font-weight: 900; color: #111; text-align: center; line-height: 1.1; margin-bottom: 8px; }
+    .distance-text { font-size: 30px; font-weight: 700; color: #111; text-align: center; }
+    .pause-btn {
+      margin: 0 24px 24px; padding: 18px; background: #F2F4F7;
+      border: 2px solid #D0D5DD; border-radius: 16px; font-size: 18px;
+      font-weight: 600; color: #111; cursor: pointer; transition: background .15s, border-color .15s;
+    }
+    .pause-btn:hover { background: #E5E7EB; border-color: #111; }
+
+    .terrain-alert {
+      position: absolute; top: calc(50vh - 80px); left: 16px; right: 16px;
+      background: white; border: 3px solid #111; border-radius: 18px;
+      padding: 20px 24px; display: flex; align-items: center; gap: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2); z-index: 20;
+      animation: slideDown .3s ease-out;
+    }
+    .terrain-alert.hidden { display: none; }
+    @keyframes slideDown { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .terrain-alert p { font-size: 20px; font-weight: 700; color: #111; }
+
+
+    /* ══════════════════════════════
+       SCREEN 4 — Celebration
+    ══════════════════════════════ */
+    #screen-celebration {
+      min-height: 100vh; align-items: center; justify-content: center;
+      padding: 48px 24px; position: relative; overflow: hidden;
+    }
+    .confetti-piece { position: fixed; top: -10px; animation: fall linear forwards; }
+    @keyframes fall { 0%{transform:translateY(0) rotate(0deg);opacity:1} 100%{transform:translateY(110vh) rotate(720deg);opacity:0} }
+
+    .celebration-content { display: flex; flex-direction: column; align-items: center; width: 100%; z-index: 10; }
+    .check-wrap { position: relative; margin-bottom: 28px; display: flex; align-items: center; justify-content: center; }
+    .check-halo {
+      position: absolute; width: 160px; height: 160px; border-radius: 50%;
+      background: rgba(30,94,255,.15); animation: halo-pulse 2s ease-in-out infinite;
+    }
+    @keyframes halo-pulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.2);opacity:1} }
+    .check-circle {
+      width: 110px; height: 110px; border-radius: 50%; background: #1E5EFF;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 32px rgba(30,94,255,.4); position: relative;
+    }
+    .cel-h1 { font-size: 44px; font-weight: 900; color: #111; text-align: center; margin-bottom: 12px; line-height: 1.1; }
+    .cel-sub { font-size: 20px; font-weight: 600; color: #111; text-align: center; margin-bottom: 6px; }
+    .cel-dest { font-size: 26px; font-weight: 700; color: #1E5EFF; text-align: center; margin-bottom: 28px; }
+    .celebrate-box {
+      background: #F0F5FF; border: 2px solid #1E5EFF; border-radius: 18px;
+      padding: 20px 24px; margin-bottom: 28px; width: 100%;
+    }
+    .celebrate-box p { font-size: 18px; color: #111; text-align: center; font-weight: 500; line-height: 1.5; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; width: 100%; }
+    .stat-box { background: #F2F4F7; border-radius: 14px; padding: 16px; text-align: center; }
+    .stat-num { font-size: 28px; font-weight: 700; color: #111; margin-bottom: 4px; }
+    .stat-lbl { font-size: 13px; font-weight: 500; color: #4A4A4A; }
+    .home-btn {
+      width: 100%; padding: 20px; background: #1E5EFF; color: white;
+      border: none; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      gap: 10px; box-shadow: 0 8px 24px rgba(30,94,255,.35); transition: opacity .15s;
+    }
+    .home-btn:hover { opacity: .9; }
+
+
+    /* ══════════════════════════════
+       Grounding Modal (shared)
+    ══════════════════════════════ */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7);
+      z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: white; border-radius: 24px; padding: 32px;
+      max-width: 380px; width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,.3);
+    }
+    .modal-box h2 { font-size: 18px; font-weight: 700; color: #111; text-align: center; margin-bottom: 10px; line-height: 1.4; }
+    .modal-sub { font-size: 16px; color: #4A4A4A; text-align: center; margin-bottom: 24px; font-weight: 500; line-height: 1.5; }
+    .modal-counter { font-size: 12px; color: #aaa; text-align: center; margin-bottom: 6px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+    .modal-next-btn {
+      width: 100%; padding: 14px; background: none; color: #1E5EFF;
+      border: 2px solid #1E5EFF; border-radius: 16px; font-size: 16px; font-weight: 600;
+      cursor: pointer; margin-bottom: 10px; transition: background .15s, color .15s;
+    }
+    .modal-next-btn:hover { background: #1E5EFF; color: white; }
+    .breath-wrap { display: flex; align-items: center; justify-content: center; height: 180px; margin-bottom: 32px; }
+    .breath-outer {
+      width: 140px; height: 140px; border-radius: 50%;
+      background: rgba(30,94,255,.2); display: flex; align-items: center; justify-content: center;
+    }
+    .breath-outer.playing { animation: breathe 4s ease-in-out infinite; }
+    @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+    .breath-inner { width: 110px; height: 110px; border-radius: 50%; background: rgba(30,94,255,.4); display: flex; align-items: center; justify-content: center; }
+    .breath-core { width: 84px; height: 84px; border-radius: 50%; background: #1E5EFF; }
+    .modal-play-btn {
+      width: 100%; padding: 18px; background: #1E5EFF; color: white;
+      border: none; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 12px; transition: opacity .15s;
+      box-shadow: 0 4px 16px rgba(30,94,255,.35);
+    }
+    .modal-play-btn:hover { opacity: .9; }
+    .modal-resume-btn {
+      width: 100%; padding: 18px; background: white; color: #111;
+      border: 2px solid #111; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; transition: background .15s, color .15s;
+    }
+    .modal-resume-btn:hover { background: #111; color: white; }
+  </style>
+</head>
+<body>
+
+  <!-- ══ SCREEN 1: Start ══ -->
+  <div id="screen-start" class="screen active">
+    <header class="start-header">
+      <div class="brand">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <path d="M24 4L8 10V22C8 32 14 40 24 44C34 40 40 32 40 22V10L24 4Z" fill="#1E5EFF" stroke="#1E5EFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M24 14L18 30L24 27L30 30L24 14Z" fill="white" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div>
+          <h1>SafeNav</h1>
+          <p>Accessible Navigation</p>
+        </div>
+      </div>
+      <div class="page-title">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+        </svg>
+        <h2>Navigate</h2>
+      </div>
+    </header>
+    <main class="start-main">
+      <div class="section-label">Current Location</div>
+      <div class="input-wrap" style="margin-bottom:24px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4" fill="#1E5EFF" stroke="#1E5EFF"/>
+          <circle cx="12" cy="12" r="9" stroke="#1E5EFF"/>
+        </svg>
+        <input type="text" id="startInput" placeholder="Enter starting address" aria-label="Starting address"/>
+      </div>
+      <div class="dest-section">
+        <div class="section-label">Where to?</div>
+        <div class="input-wrap">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          <input type="text" id="destInput" placeholder="Enter destination" aria-label="Destination"/>
+        </div>
+      </div>
+      <div class="saved-section">
+        <div class="section-label">Saved Locations</div>
+        <div class="locations-grid">
+          <button class="loc-card" data-name="212 Holland St., Somerville, MA" onclick="selectLoc(this)" aria-label="Select 3L Place">
+            <span class="loc-emoji">🏠</span>
+            <span class="loc-name">3L Place</span>
+            <span class="loc-addr">212 Holland St., Somerville</span>
+          </button>
+          <button class="loc-card" data-name="200 College Ave., Medford, MA" onclick="selectLoc(this)" aria-label="Select Kindlevan Cafe Tufts">
+            <span class="loc-emoji">☕</span>
+            <span class="loc-name">Kindlevan Cafe</span>
+            <span class="loc-addr">200 College Ave., Medford</span>
+          </button>
+          <button class="loc-card" data-name="700 Broadway, Somerville, MA" onclick="selectLoc(this)" aria-label="Select Ball Square">
+            <span class="loc-emoji">🏙️</span>
+            <span class="loc-name">Ball Square</span>
+            <span class="loc-addr">700 Broadway, Somerville</span>
+          </button>
+          <button class="loc-card" data-name="161 Packard Ave, Medford, MA" onclick="selectLoc(this)" aria-label="Select President's Lawn Tufts">
+            <span class="loc-emoji">🌿</span>
+            <span class="loc-name">President's Lawn</span>
+            <span class="loc-addr">161 Packard Ave, Medford</span>
+          </button>
+        </div>
+      </div>
+      <div class="prefs">
+        <div class="section-label">Preferences</div>
+        <button class="pref-row" onclick="togglePref(this)" aria-pressed="false">
+          <span class="pref-label">Avoid busy streets</span>
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        </button>
+        <button class="pref-row" onclick="togglePref(this)" aria-pressed="false">
+          <span class="pref-label">Avoid uneven terrain</span>
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        </button>
+      </div>
+    </main>
+    <div class="start-wrap">
+      <p id="apiError" hidden style="color:#D00;font-size:14px;text-align:center;margin-bottom:10px;"></p>
+      <button class="start-btn" id="startBtn" onclick="goToRoutes()">Start Navigation</button>
+    </div>
+  </div>
+
+
+  <!-- ══ SCREEN 2: Route Options ══ -->
+  <div id="screen-routes" class="screen">
+    <button class="back-btn" onclick="showScreen('screen-start')" aria-label="Go back">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 12H5M12 5l-7 7 7 7"/>
+      </svg>
+    </button>
+    <div class="route-page-header">
+      <h1>Choose Your Route</h1>
+      <p id="routeDestLabel">To Home</p>
+    </div>
+
+    <!-- Easiest Terrain -->
+    <button class="route-card" onclick="goToNav('simplest')" aria-label="Select Easiest Terrain">
+      <div class="card-top">
+        <div class="card-left">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" stroke="#1E5EFF" stroke-width="2.5"/>
+            <line x1="10" y1="20" x2="30" y2="20" stroke="#1E5EFF" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+          <div class="card-title"><h2>Easiest Terrain</h2><p>Least terrain complexity</p></div>
+        </div>
+        <div class="time-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+          15 min
+        </div>
+      </div>
+      <div class="tags"><span class="tag">Smooth</span><span class="tag">Easy</span></div>
+      <hr class="card-divider"/>
+      <div class="stats">
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><line x1="4" y1="16" x2="28" y2="16" stroke="#111" stroke-width="3" stroke-linecap="round"/></svg>
+          Smooth
+        </div>
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="4" y="20" width="4" height="8" rx="1" fill="#111"/><rect x="13" y="14" width="4" height="14" rx="1" fill="#111"/><rect x="22" y="8" width="4" height="20" rx="1" fill="#111"/></svg>
+          Medium
+        </div>
+      </div>
+    </button>
+
+    <!-- Quietest Route -->
+    <button class="route-card" onclick="goToNav('quietest')" aria-label="Select Quietest Route">
+      <div class="card-top">
+        <div class="card-left">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <path d="M15 20 L20 15 L25 20 L20 25 Z" fill="rgba(30,94,255,0.2)" stroke="#1E5EFF" stroke-width="2"/>
+          </svg>
+          <div class="card-title"><h2>Quietest Route</h2><p>Less busy streets</p></div>
+        </div>
+        <div class="time-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+          18 min
+        </div>
+      </div>
+      <div class="tags"><span class="tag">Low Traffic</span><span class="tag">Quiet</span></div>
+      <hr class="card-divider"/>
+      <div class="stats">
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><path d="M4 16 L10 12 L18 18 L26 14" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Moderate
+        </div>
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="4" y="20" width="4" height="8" rx="1" fill="#111"/><rect x="13" y="20" width="4" height="8" rx="1" fill="#D0D5DD"/><rect x="22" y="20" width="4" height="8" rx="1" fill="#D0D5DD"/></svg>
+          Low
+        </div>
+      </div>
+    </button>
+
+    <!-- Shortest Route -->
+    <button class="route-card" onclick="goToNav('shortest')" aria-label="Select Shortest Route">
+      <div class="card-top">
+        <div class="card-left">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <path d="M10 20 L30 20 M30 20 L22 13 M30 20 L22 27" stroke="#1E5EFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <div class="card-title"><h2>Shortest Route</h2><p>Fastest arrival time</p></div>
+        </div>
+        <div class="time-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+          12 min
+        </div>
+      </div>
+      <div class="tags"><span class="tag">Fastest</span><span class="tag">Direct</span></div>
+      <hr class="card-divider"/>
+      <div class="stats">
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><path d="M4 16 L10 12 L18 18 L26 14" stroke="#111" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Moderate
+        </div>
+        <div class="stat">
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none"><rect x="4" y="20" width="4" height="8" rx="1" fill="#111"/><rect x="13" y="14" width="4" height="14" rx="1" fill="#111"/><rect x="22" y="8" width="4" height="20" rx="1" fill="#111"/></svg>
+          High
+        </div>
+      </div>
+    </button>
+  </div>
+
+
+  <!-- ══ SCREEN 3: Navigation ══ -->
+  <div id="screen-nav" class="screen">
+    <div class="map-half">
+      <svg class="map-svg" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice">
+        <rect width="400" height="400" fill="#F7F7F7"/>
+        <rect x="100" y="0" width="50" height="400" fill="#D0D5DD"/>
+        <rect x="0" y="200" width="400" height="50" fill="#D0D5DD"/>
+        <rect x="95" y="0" width="8" height="400" fill="#E5E7EB"/>
+        <rect x="147" y="0" width="8" height="400" fill="#E5E7EB"/>
+        <rect x="0" y="195" width="400" height="8" fill="#E5E7EB"/>
+        <rect x="0" y="247" width="400" height="8" fill="#E5E7EB"/>
+        <rect x="10" y="10" width="80" height="180" fill="#D0D5DD" opacity="0.4"/>
+        <rect x="160" y="10" width="230" height="180" fill="#D0D5DD" opacity="0.4"/>
+        <rect x="10" y="255" width="80" height="135" fill="#D0D5DD" opacity="0.4"/>
+        <rect x="160" y="255" width="230" height="135" fill="#D0D5DD" opacity="0.4"/>
+        <rect x="110" y="218" width="10" height="14" fill="#111"/>
+        <rect x="110" y="238" width="10" height="14" fill="#111"/>
+        <rect x="125" y="218" width="10" height="14" fill="#111"/>
+        <rect x="125" y="238" width="10" height="14" fill="#111"/>
+        <rect x="140" y="218" width="10" height="14" fill="#111"/>
+        <rect x="140" y="238" width="10" height="14" fill="#111"/>
+        <circle cx="125" cy="210" r="10" fill="#1E5EFF"/>
+        <text x="125" y="215" text-anchor="middle" fill="white" font-size="12" font-weight="bold">✕</text>
+        <path d="M117 350 L117 240" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round"/>
+        <path d="M117 240 L125 225 L163 220" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8,4"/>
+        <path d="M163 220 L163 80" stroke="#1E5EFF" stroke-width="10" stroke-linecap="round"/>
+        <path d="M163 80 L163 60 L173 50 L163 40 L153 50 L163 60 Z" fill="#1E5EFF" stroke="white" stroke-width="2"/>
+        <rect id="sidewalkHighlight" x="95" y="290" width="8" height="120" fill="#1E5EFF" opacity="0.4"/>
+        <circle id="locHalo1" cx="117" cy="350" r="24" fill="#1E5EFF" opacity="0.15">
+          <animate attributeName="opacity" values="0.15;0.3;0.15" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <circle id="locHalo2" cx="117" cy="350" r="16" fill="#1E5EFF" opacity="0.3"/>
+        <circle id="locDot" cx="117" cy="350" r="10" fill="#1E5EFF" stroke="white" stroke-width="3"/>
+        <circle id="locCenter" cx="117" cy="350" r="4" fill="white"/>
+      </svg>
+
+      <div class="map-label">
+        <div class="on-lbl">On</div>
+        <div class="street" id="streetName">Main Street</div>
+      </div>
+      <div class="time-chip">
+        <div class="arr-lbl">Arrival</div>
+        <div class="arr-val" id="timeVal">12 min</div>
+      </div>
+
+      <button class="map-ctrl left" onclick="showScreen('screen-start')" aria-label="Stop navigation">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+
+      <button class="map-ctrl right" id="muteBtn" onclick="toggleMute()" aria-label="Mute audio">
+        <svg id="volIcon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+      </button>
+
+      <button class="arrived-btn" onclick="goToCelebration()" aria-label="I've arrived">I've Arrived ✓</button>
+
+      <div class="sidewalk-badge">
+        <svg id="sidewalkArrow" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M15 4 L7 12 L15 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="sidewalkSideLabel">LEFT SIDE</span>
+      </div>
+    </div>
+
+    <div class="nav-half">
+      <div class="sidewalk-bar">
+        <p id="sidewalkInstruction">Stay on left side</p>
+      </div>
+      <div class="direction-area">
+        <svg width="120" height="120" viewBox="0 0 160 160" fill="none">
+          <path d="M80 20 L80 140 M80 20 L50 50 M80 20 L110 50" stroke="#111" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <p class="instruction-text" id="instructionText">Continue straight</p>
+        <p class="distance-text" id="distanceText">in 200 ft</p>
+      </div>
+      <button class="pause-btn" onclick="openGrounding()" aria-label="Take a mindful pause">Pause &amp; Ground</button>
+    </div>
+
+    <div class="terrain-alert hidden" id="terrainAlert">
+      <div style="background:#F2F4F7;padding:8px;border-radius:10px;flex-shrink:0;">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <path d="M8 24 L16 24 M20 24 L28 24 M32 24 L40 24" stroke="#111" stroke-width="4" stroke-linecap="round"/>
+          <line x1="18" y1="20" x2="18" y2="28" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+          <line x1="30" y1="20" x2="30" y2="28" stroke="#111" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <p>Cracked sidewalk ahead</p>
+    </div>
+  </div>
+
+
+  <!-- ══ SCREEN 4: Celebration ══ -->
+  <div id="screen-celebration" class="screen">
+    <div class="celebration-content">
+      <div class="check-wrap">
+        <div class="check-halo"></div>
+        <div class="check-circle">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+      </div>
+      <h1 class="cel-h1">You Made It!</h1>
+      <p class="cel-sub">Successfully arrived at</p>
+      <p class="cel-dest" id="celDestName">Home</p>
+      <div class="celebrate-box">
+        <p>Great job navigating! Take a moment to celebrate this achievement. 🎉</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-num">15</div><div class="stat-lbl">Minutes</div></div>
+        <div class="stat-box"><div class="stat-num">0.8</div><div class="stat-lbl">Miles</div></div>
+      </div>
+      <button class="home-btn" onclick="showScreen('screen-start')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+          <polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+        Return to Home
+      </button>
+    </div>
+  </div>
+
+
+  <!-- Grounding Modal -->
+  <div class="modal-overlay hidden" id="groundingModal">
+    <div class="modal-box">
+      <p class="modal-counter" id="groundingCounter">Exercise 1 of 8</p>
+      <h2 id="groundingPrefix">Stop &amp; step to the side of the walkway if you are in a safe space to do so. Take a breath.</h2>
+      <p class="modal-sub" id="groundingPrompt"></p>
+      <div class="breath-wrap">
+        <div class="breath-outer" id="breathOuter">
+          <div class="breath-inner"><div class="breath-core"></div></div>
+        </div>
+      </div>
+      <button class="modal-play-btn" id="playBtn" onclick="toggleBreath()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Start Breathing Exercise
+      </button>
+      <button class="modal-next-btn" onclick="nextGrounding()">Try another exercise</button>
+      <button class="modal-resume-btn" onclick="closeGrounding()">Resume Navigation</button>
+    </div>
+  </div>
+
+
+  <script>
+    /* ── Config — swap in real URL when backend is ready ── */
+    const BACKEND_URL = 'https://YOUR_BACKEND_URL/routes';
+
+    /* ── State ── */
+    let currentDestination = '';
+    let navTimers = [];
+
+    /* ── Screen routing ── */
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      window.scrollTo(0, 0);
+    }
+
+    /* ── Screen 1 logic ── */
+    const startInput = document.getElementById('startInput');
+    const destInput  = document.getElementById('destInput');
+    const startBtn   = document.getElementById('startBtn');
+
+    startInput.addEventListener('input', updateStart);
+    destInput.addEventListener('input', updateStart);
+    function updateStart() {
+      const ready = !!startInput.value.trim() && !!destInput.value.trim();
+      startBtn.classList.toggle('active', ready);
+    }
+    function selectLoc(card) {
+      document.querySelectorAll('.loc-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      destInput.value = card.dataset.name;
+      updateStart();
+    }
+    function togglePref(btn) {
+      const track = btn.querySelector('.toggle-track');
+      const on = track.classList.toggle('on');
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', on);
+    }
+    async function goToRoutes() {
+      const start = startInput.value.trim();
+      const dest  = destInput.value.trim();
+      if (!start || !dest) return;
+
+      // Show loading state
+      startBtn.textContent = 'Finding routes…';
+      startBtn.disabled = true;
+      document.getElementById('apiError').hidden = true;
+
+      try {
+        const res = await fetch(BACKEND_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ start, destination: dest }),
+        });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        // const routes = await res.json();
+        // TODO: populate route cards with real data from `routes`
+
+        currentDestination = dest;
+        document.getElementById('routeDestLabel').textContent = 'To ' + dest;
+        showScreen('screen-routes');
+      } catch (err) {
+        document.getElementById('apiError').hidden = false;
+        document.getElementById('apiError').textContent = 'Could not reach server. Check your connection and try again.';
+      } finally {
+        startBtn.textContent = 'Start Navigation';
+        startBtn.disabled = false;
+      }
+    }
+
+    /* ── Screen 2 logic ── */
+    function goToNav(routeId) {
+      startNavigation(routeId);
+      showScreen('screen-nav');
+    }
+
+    /* ── Screen 3 logic ── */
+    const navStates = [
+      { locX:117, locY:350, hlX:95,  hlY:290, side:'left',  sideInstr:'Stay on left side',                    instr:'Continue straight', dist:'200 ft', time:'12 min' },
+      { locX:117, locY:280, hlX:95,  hlY:220, side:'left',  sideInstr:'Switch to right sidewalk at crosswalk', instr:'Continue straight', dist:'100 ft', time:'11 min' },
+      { locX:117, locY:240, hlX:95,  hlY:180, side:'left',  sideInstr:'Move to right side after crossing',     instr:'Cross at crosswalk', dist:'50 ft',  time:'11 min', terrain:true },
+      { locX:163, locY:220, hlX:147, hlY:160, side:'right', sideInstr:'Stay on right side',                    instr:'Continue straight', dist:'150 ft', time:'10 min' },
+    ];
+
+    function applyNavState(s) {
+      ['locDot','locCenter','locHalo1','locHalo2'].forEach(id => {
+        const el = document.getElementById(id);
+        el.setAttribute('cx', s.locX); el.setAttribute('cy', s.locY);
+      });
+      const hl = document.getElementById('sidewalkHighlight');
+      hl.setAttribute('x', s.hlX); hl.setAttribute('y', s.hlY);
+      document.getElementById('sidewalkInstruction').textContent = s.sideInstr;
+      document.getElementById('instructionText').textContent = s.instr;
+      document.getElementById('distanceText').textContent = 'in ' + s.dist;
+      document.getElementById('timeVal').textContent = s.time;
+      document.getElementById('sidewalkSideLabel').textContent = s.side.toUpperCase() + ' SIDE';
+      document.getElementById('sidewalkArrow').innerHTML = s.side === 'left'
+        ? '<path d="M15 4 L7 12 L15 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+        : '<path d="M9 4 L17 12 L9 20" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>';
+      if (s.terrain) {
+        document.getElementById('terrainAlert').classList.remove('hidden');
+        setTimeout(() => document.getElementById('terrainAlert').classList.add('hidden'), 3000);
+      }
+    }
+
+    function startNavigation(routeId) {
+      navTimers.forEach(clearTimeout);
+      navTimers = [];
+      applyNavState(navStates[0]);
+      const delays = [4000, 8000, 12000];
+      delays.forEach((d, i) => {
+        navTimers.push(setTimeout(() => applyNavState(navStates[i + 1]), d));
+      });
+    }
+
+    function goToCelebration() {
+      navTimers.forEach(clearTimeout);
+      document.getElementById('celDestName').textContent = currentDestination || 'your destination';
+      spawnConfetti();
+      showScreen('screen-celebration');
+    }
+
+    let muted = false;
+    function toggleMute() {
+      muted = !muted;
+      document.getElementById('volIcon').innerHTML = muted
+        ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
+        : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>';
+    }
+
+    const groundingExercises = [
+      'Feel both feet on the ground. Wiggle your toes. Take another deep breath.',
+      'Take another deep breath in and smell the air around you. What do you notice? Take a final deep breath.',
+      'Slowly scan your head from left to right. Take in your surroundings. What do you notice? Take another deep breath.',
+      'If you are near a building or a tree, pause and put a hand on it. What is the texture? Take a deep breath.',
+      'Look around and think of three things you can see right now. Name them out loud, or quietly to yourself. Take a deep breath.',
+      'Calm your body and mind and listen. What are three sounds you hear? Name them out loud, or quietly to yourself. Take a deep breath.',
+      'Give yourself a hug. Squeeze as tightly as is comfortable for you. Take a deep breath.',
+      'Shake your hands out quickly for 5 seconds. Find stillness. Take a deep breath.',
+    ];
+    let groundingIndex = 0;
+
+    function showGroundingExercise(index) {
+      groundingIndex = index;
+      document.getElementById('groundingCounter').textContent = `Exercise ${index + 1} of ${groundingExercises.length}`;
+      document.getElementById('groundingPrompt').textContent = groundingExercises[index];
+    }
+
+    function openGrounding() {
+      showGroundingExercise(Math.floor(Math.random() * groundingExercises.length));
+      document.getElementById('groundingModal').classList.remove('hidden');
+    }
+
+    function nextGrounding() {
+      if (breathing) toggleBreath();
+      showGroundingExercise((groundingIndex + 1) % groundingExercises.length);
+    }
+
+    function closeGrounding() {
+      document.getElementById('groundingModal').classList.add('hidden');
+      if (breathing) toggleBreath();
+    }
+    let breathing = false;
+    function toggleBreath() {
+      breathing = !breathing;
+      document.getElementById('breathOuter').classList.toggle('playing', breathing);
+      document.getElementById('playBtn').innerHTML = breathing
+        ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
+        : '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Breathing Exercise';
+    }
+
+    /* ── Screen 4 logic ── */
+    function spawnConfetti() {
+      document.querySelectorAll('.confetti-piece').forEach(e => e.remove());
+      const colors = ['#1E5EFF','#FFC700','#10B981','#F59E0B','#EF4444','#8B5CF6'];
+      for (let i = 0; i < 60; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti-piece';
+        const size = 8 + Math.random() * 8;
+        el.style.cssText = `left:${Math.random()*100}%;width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${2+Math.random()*2}s;animation-delay:${Math.random()}s;`;
+        document.body.appendChild(el);
+      }
+    }
+  </script>
+</body>
+</html>
