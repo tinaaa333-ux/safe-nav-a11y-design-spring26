@@ -684,6 +684,22 @@
     /* ── Hosted routing API ── */
     const GENERATE_AND_SCORE_URL = 'http://34.41.85.77:8000/routes/generate-and-score';
 
+    /* ── Vest (ESP32) ───────────────────────────────────────────────────────
+       Flash the ESP32 sketch, open Serial Monitor at 115200 baud, copy the
+       IP it prints, and paste it below (keep the http:// prefix).
+       Both devices must be on the same WiFi network.
+    ── */
+    const VEST_URL = 'http://192.168.1.XXX'; // ← replace with your ESP32's IP
+
+    async function signalVest(type) {
+      // type: 'turn' | 'hazard' | 'reststop' | 'arrived'
+      try {
+        await fetch(`${VEST_URL}/${type}`, { mode: 'no-cors' });
+      } catch(e) {
+        // Vest not connected — fail silently so app keeps working
+      }
+    }
+
     /* ── State ── */
     let currentDestination = '';
     let currentPolyline = null;
@@ -1077,8 +1093,15 @@
           html: `<div style="background:${cfg.bg};width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;">${cfg.emoji}</div>`,
           iconSize: [36, 36], iconAnchor: [18, 18], className: '',
         });
+        const isHazard   = ['cracked_sidewalk','unmarked_crosswalk'].includes(poi.type);
+        const isRestStop = ['bench','stone_wall'].includes(poi.type);
         L.marker([poi.lat, poi.lng], { icon })
+<<<<<<< HEAD
           .bindPopup(`<div style="font-size:14px;max-width:200px;">${escapeHtml(label)}</div>`, { maxWidth: 220 })
+=======
+          .bindPopup(`<div style="font-size:14px;max-width:200px;">${cfg.label}</div>`, { maxWidth: 220 })
+          .on('popupopen', () => signalVest(isHazard ? 'hazard' : isRestStop ? 'reststop' : 'turn'))
+>>>>>>> upstream/main
           .addTo(leafletMap);
       });
 
@@ -1088,8 +1111,12 @@
     function goToCelebration() {
       navTimers.forEach(clearTimeout);
       document.getElementById('celDestName').textContent = currentDestination || 'your destination';
+<<<<<<< HEAD
       document.getElementById('celMinutes').textContent = currentRoute?.duration_s ? Math.max(1, Math.round(currentRoute.duration_s / 60)) : '--';
       document.getElementById('celMiles').textContent = currentRoute?.distance_m ? (currentRoute.distance_m / 1609.344).toFixed(2) : '--';
+=======
+      signalVest('arrived');
+>>>>>>> upstream/main
       spawnConfetti();
       showScreen('screen-celebration');
     }
