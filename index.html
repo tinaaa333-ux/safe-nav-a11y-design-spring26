@@ -1096,12 +1096,8 @@
         const isHazard   = ['cracked_sidewalk','unmarked_crosswalk'].includes(poi.type);
         const isRestStop = ['bench','stone_wall'].includes(poi.type);
         L.marker([poi.lat, poi.lng], { icon })
-<<<<<<< HEAD
           .bindPopup(`<div style="font-size:14px;max-width:200px;">${escapeHtml(label)}</div>`, { maxWidth: 220 })
-=======
-          .bindPopup(`<div style="font-size:14px;max-width:200px;">${cfg.label}</div>`, { maxWidth: 220 })
           .on('popupopen', () => signalVest(isHazard ? 'hazard' : isRestStop ? 'reststop' : 'turn'))
->>>>>>> upstream/main
           .addTo(leafletMap);
       });
 
@@ -1111,12 +1107,9 @@
     function goToCelebration() {
       navTimers.forEach(clearTimeout);
       document.getElementById('celDestName').textContent = currentDestination || 'your destination';
-<<<<<<< HEAD
       document.getElementById('celMinutes').textContent = currentRoute?.duration_s ? Math.max(1, Math.round(currentRoute.duration_s / 60)) : '--';
       document.getElementById('celMiles').textContent = currentRoute?.distance_m ? (currentRoute.distance_m / 1609.344).toFixed(2) : '--';
-=======
       signalVest('arrived');
->>>>>>> upstream/main
       spawnConfetti();
       showScreen('screen-celebration');
     }
