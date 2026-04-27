@@ -166,6 +166,35 @@
     .stats { display: flex; gap: 24px; }
     .stat { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #111; font-weight: 500; }
 
+    .route-live-summary.hidden { display: none; }
+    .route-live-summary { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+    .route-meta {
+      background: #F8FAFC; border: 2px solid #D0D5DD; border-radius: 18px;
+      padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .route-meta-row { display: flex; gap: 10px; align-items: flex-start; }
+    .route-meta-label {
+      min-width: 44px; color: #4A4A4A; font-size: 12px; font-weight: 800;
+      letter-spacing: .05em; text-transform: uppercase;
+    }
+    .route-meta-value { color: #111; font-size: 14px; font-weight: 600; line-height: 1.35; }
+    .route-metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .route-metric {
+      background: white; border: 1px solid #E5E7EB; border-radius: 14px;
+      padding: 12px;
+    }
+    .route-metric-value { font-size: 20px; font-weight: 800; color: #111; margin-bottom: 2px; }
+    .route-metric-label { font-size: 12px; font-weight: 700; color: #4A4A4A; }
+    .route-explanation {
+      background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12;
+      border-radius: 14px; padding: 12px; font-size: 14px; font-weight: 600; line-height: 1.4;
+    }
+    .route-note {
+      color: #4A4A4A; font-size: 13px; line-height: 1.4;
+      background: #F2F4F7; border-radius: 12px; padding: 10px 12px;
+    }
+    .recommended-route-card { cursor: pointer; margin-bottom: 0; }
+
 
     /* ══════════════════════════════
        SCREEN 3 — Navigation
@@ -443,6 +472,7 @@
       <h1>Choose Your Route</h1>
       <p id="routeDestLabel">To Home</p>
     </div>
+    <div id="routeSummary" class="route-live-summary hidden" aria-live="polite"></div>
 
     <!-- Easiest Terrain -->
     <button class="route-card" onclick="goToNav('simplest')" aria-label="Select Easiest Terrain">
@@ -615,8 +645,8 @@
         <p>Great job navigating! Take a moment to celebrate this achievement. 🎉</p>
       </div>
       <div class="stats-grid">
-        <div class="stat-box"><div class="stat-num">15</div><div class="stat-lbl">Minutes</div></div>
-        <div class="stat-box"><div class="stat-num">0.8</div><div class="stat-lbl">Miles</div></div>
+        <div class="stat-box"><div class="stat-num" id="celMinutes">--</div><div class="stat-lbl">Minutes</div></div>
+        <div class="stat-box"><div class="stat-num" id="celMiles">--</div><div class="stat-lbl">Miles</div></div>
       </div>
       <button class="home-btn" onclick="showScreen('screen-start')">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -651,8 +681,8 @@
 
 
   <script>
-    /* ── Config — swap in real URL when backend is ready ── */
-    const BACKEND_URL = 'http://localhost:8000/routes';
+    /* ── Hosted routing API ── */
+    const GENERATE_AND_SCORE_URL = 'http://34.41.85.77:8000/routes/generate-and-score';
 
     /* ── Vest (ESP32) ───────────────────────────────────────────────────────
        Flash the ESP32 sketch, open Serial Monitor at 115200 baud, copy the
@@ -674,29 +704,19 @@
     let currentDestination = '';
     let currentPolyline = null;
     let currentPois = [];
+    let currentRoute = null;
+    let currentRouteResponse = null;
     let leafletMap = null;
     let navTimers = [];
-    let storedStartCoords = null; // [lat, lng] cached from autocomplete pick
-    let storedDestCoords  = null;
-
-    /* ── Demo data used until backend is live ── */
-    const DEMO_POLYLINE = [
-      [42.3876, -71.1190], [42.3885, -71.1178], [42.3897, -71.1163],
-      [42.3912, -71.1148], [42.3928, -71.1132], [42.3944, -71.1115],
-      [42.3958, -71.1098], [42.3971, -71.1078], [42.3981, -71.1061],
-    ];
-    const DEMO_POIS = [
-      { type: 'cracked_sidewalk',  lat: 42.3912, lng: -71.1148 },
-      { type: 'bench',             lat: 42.3944, lng: -71.1115 },
-      { type: 'unmarked_crosswalk',lat: 42.3958, lng: -71.1098 },
-      { type: 'stone_wall',        lat: 42.3971, lng: -71.1078 },
-    ];
 
     const POI_CONFIG = {
       cracked_sidewalk:   { bg: '#F59E0B', emoji: '⚠️', label: 'Cracked sidewalk — switch to the other side of the street' },
       unmarked_crosswalk: { bg: '#EF4444', emoji: '🛑', label: 'Unmarked crosswalk — stop and look both ways slowly before crossing' },
       bench:              { bg: '#10B981', emoji: '🪑', label: 'Bench — rest stop available here' },
       stone_wall:         { bg: '#10B981', emoji: '🧱', label: 'Stone wall — you can lean here for a rest' },
+      obstacle:           { bg: '#F59E0B', emoji: '⚠️', label: 'Reported route obstacle' },
+      crossing_issue:     { bg: '#EF4444', emoji: '🛑', label: 'Reported crossing issue' },
+      rest_stop:          { bg: '#10B981', emoji: '🪑', label: 'Rest stop' },
     };
 
     /* ── Screen routing ── */
@@ -715,14 +735,32 @@
 
     startInput.addEventListener('focus', () => { lastFocused = 'start'; });
     destInput.addEventListener('focus',  () => { lastFocused = 'dest'; });
-    startInput.addEventListener('input', () => { storedStartCoords = null; updateReadyState(); triggerAc('start'); });
-    destInput.addEventListener('input',  () => { storedDestCoords  = null; updateReadyState(); triggerAc('dest'); });
+    startInput.addEventListener('input', () => { updateReadyState(); triggerAc('start'); });
+    destInput.addEventListener('input',  () => { updateReadyState(); triggerAc('dest'); });
     startInput.addEventListener('blur',  () => setTimeout(() => closeAc('start'), 200));
     destInput.addEventListener('blur',   () => setTimeout(() => closeAc('dest'),  200));
+    [startInput, destInput].forEach(input => {
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && startBtn.classList.contains('active') && !startBtn.disabled) {
+          startNav();
+        }
+      });
+    });
 
     function updateReadyState() {
       const ready = !!startInput.value.trim() && !!destInput.value.trim();
       startBtn.classList.toggle('active', ready);
+    }
+
+    function setApiError(message) {
+      const errorEl = document.getElementById('apiError');
+      if (!message) {
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+        return;
+      }
+      errorEl.textContent = message;
+      errorEl.hidden = false;
     }
 
     /* Nominatim autocomplete */
@@ -771,8 +809,6 @@
     function pickAc(field, name, lat, lon) {
       const input = field === 'start' ? startInput : destInput;
       input.value = name;
-      if (field === 'start') storedStartCoords = [lat, lon];
-      else                   storedDestCoords  = [lat, lon];
       closeAc(field);
       updateReadyState();
     }
@@ -809,75 +845,223 @@
       } catch(e) { clearTimeout(timer); throw e; }
     }
 
-    async function geocodeAddress(address) {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-      const res = await fetchWithTimeout(url, { headers: { 'Accept-Language': 'en' } }, 6000);
+    async function fetchScoredRoute(originText, destinationText) {
+      const payload = {
+        origin: { address: originText },
+        destination: { address: destinationText },
+        mode: 'pedestrian',
+        alternatives: 1,
+      };
+
+      console.log('generate-and-score request:', payload);
+      const res = await fetchWithTimeout(GENERATE_AND_SCORE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, 30000);
+      console.log('generate-and-score status:', res.status);
+
+      if (!res.ok) {
+        throw new Error(await readBackendError(res));
+      }
+
       const data = await res.json();
-      if (!data.length) throw new Error('Address not found');
-      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+      console.log('generate-and-score response:', data);
+      return data;
     }
 
-    async function fetchWalkingRoute(startLatLng, destLatLng) {
-      const [sLat, sLng] = startLatLng;
-      const [dLat, dLng] = destLatLng;
-      const url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${sLng},${sLat};${dLng},${dLat}?overview=full&geometries=geojson`;
-      console.log('OSRM request:', url);
-      const res = await fetchWithTimeout(url, {}, 15000);
-      const data = await res.json();
-      console.log('OSRM response code:', data.code, 'points:', data.routes?.[0]?.geometry?.coordinates?.length);
-      if (!data.routes?.[0]) throw new Error('OSRM: no route returned');
-      // OSRM returns [lng, lat] — flip to [lat, lng] for Leaflet
-      return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    async function readBackendError(res) {
+      try {
+        const data = await res.json();
+        const message = data?.error?.message || data?.detail || data?.message;
+        if (message) return `Backend ${res.status}: ${message}`;
+      } catch(e) {
+        // Fall through to a status-only error.
+      }
+      return `Backend ${res.status}: ${res.statusText || 'route request failed'}`;
+    }
+
+    function getFirstRoute(data) {
+      const route = data?.routes?.[0];
+      if (!route) throw new Error('No routes were returned for those addresses.');
+      return route;
+    }
+
+    function getRouteLatLngs(route) {
+      const coords = route?.geojson?.coordinates || route?.decoded_shape || [];
+      return coords.map(point => [point[1], point[0]]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+    }
+
+    function getFeaturePoint(feature) {
+      const coords = feature?.geojson?.coordinates;
+      const lng = feature?.geometry?.x ?? coords?.[0];
+      const lat = feature?.geometry?.y ?? coords?.[1];
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return { lat, lng };
+    }
+
+    function getRoutePois(route) {
+      const raw = route?.score?.raw_arcgis || {};
+      const obstacles = (raw.pois || []).map(feature => {
+        const point = getFeaturePoint(feature);
+        if (!point) return null;
+        const attrs = feature.attributes || {};
+        const category = String(attrs.obstacle_category || '').toLowerCase();
+        const type = category.includes('cross') ? 'crossing_issue' : 'obstacle';
+        const detail = [attrs.obstacle_category, attrs.obstacle_type, attrs.severity].filter(Boolean).join(' · ');
+        return { ...point, type, label: detail || POI_CONFIG[type].label };
+      }).filter(Boolean);
+
+      const restStops = (raw.rest_stops || []).map(feature => {
+        const point = getFeaturePoint(feature);
+        if (!point) return null;
+        const attrs = feature.attributes || {};
+        const label = attrs.name || attrs.Name || attrs.type || attrs.Type || POI_CONFIG.rest_stop.label;
+        return { ...point, type: 'rest_stop', label };
+      }).filter(Boolean);
+
+      return [...obstacles, ...restStops];
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    function shortPlace(value) {
+      const text = String(value || '').trim();
+      if (!text) return 'your destination';
+      return text.split(',').slice(0, 2).join(',').trim();
+    }
+
+    function formatDistance(meters) {
+      if (!Number.isFinite(meters)) return 'Unknown';
+      const miles = meters / 1609.344;
+      return miles >= 0.1 ? `${miles.toFixed(2)} mi` : `${Math.round(meters)} m`;
+    }
+
+    function formatDuration(seconds) {
+      if (!Number.isFinite(seconds)) return 'Unknown';
+      return `${Math.max(1, Math.round(seconds / 60))} min`;
+    }
+
+    function formatMetric(value, suffix = '') {
+      return value === null || value === undefined ? 'N/A' : `${value}${suffix}`;
+    }
+
+    function getRestStopNote(status) {
+      if (!status) return '';
+      if (status.configured && status.queried && status.available && status.authenticated !== false) return '';
+      return status.reason || 'Rest stop source reported limited availability.';
+    }
+
+    function renderRouteSummary(data, route) {
+      const summary = document.getElementById('routeSummary');
+      const originName = data?.origin?.display_name || data?.origin?.address || startInput.value.trim();
+      const destinationName = data?.destination?.display_name || data?.destination?.address || destInput.value.trim();
+      const score = route.score || {};
+      const metrics = score.metrics || {};
+      const pointCount = route.geojson?.coordinates?.length || route.decoded_shape?.length || metrics.route_point_count || currentPolyline?.length || 0;
+      const restStopNote = getRestStopNote(score.rest_stop_source_status);
+
+      document.getElementById('routeDestLabel').textContent = `To ${shortPlace(destinationName)}`;
+      document.querySelectorAll('#screen-routes > .route-card').forEach(card => { card.hidden = true; });
+
+      summary.innerHTML = `
+        <div class="route-meta">
+          <div class="route-meta-row">
+            <div class="route-meta-label">From</div>
+            <div class="route-meta-value">${escapeHtml(shortPlace(originName))}</div>
+          </div>
+          <div class="route-meta-row">
+            <div class="route-meta-label">To</div>
+            <div class="route-meta-value">${escapeHtml(shortPlace(destinationName))}</div>
+          </div>
+        </div>
+
+        <button class="route-card recommended-route-card" onclick="goToNav('recommended')" aria-label="Open recommended route on map">
+          <div class="card-top">
+            <div class="card-left">
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="18" stroke="#1E5EFF" stroke-width="2.5"/>
+                <path d="M12 21 L18 27 L29 13" stroke="#1E5EFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="card-title">
+                <h2>Recommended Route</h2>
+                <p>${escapeHtml(route.route_id || 'Generated route')}</p>
+              </div>
+            </div>
+            <div class="time-badge">${escapeHtml(formatDuration(route.duration_s))}</div>
+          </div>
+          <div class="route-metrics-grid">
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatDistance(route.distance_m))}</div><div class="route-metric-label">Distance</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(score.overall_score))}</div><div class="route-metric-label">Overall score</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.obstacle_count))}</div><div class="route-metric-label">Obstacles</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.crossing_issue_count))}</div><div class="route-metric-label">Crossing issues</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.rest_stop_count))}</div><div class="route-metric-label">Rest stops</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.avg_rest_quality))}</div><div class="route-metric-label">Avg rest quality</div></div>
+          </div>
+        </button>
+
+        ${score.explanation ? `<div class="route-explanation">${escapeHtml(score.explanation)}</div>` : ''}
+        <div class="route-note">Decoded route points: ${escapeHtml(pointCount)}</div>
+        ${restStopNote ? `<div class="route-note">Rest stop data: ${escapeHtml(restStopNote)}</div>` : ''}
+      `;
+      summary.classList.remove('hidden');
     }
 
     async function startNav() {
       const start = startInput.value.trim();
       const dest  = destInput.value.trim();
-      const pref  = document.querySelector('.route-pref-btn.active')?.dataset.pref || 'shortest';
       if (!start || !dest) return;
 
-      startBtn.textContent = 'Finding route…';
+      setApiError('');
+      startBtn.textContent = 'Finding route...';
       startBtn.disabled = true;
 
       try {
-        const abort = new AbortController();
-        const timer = setTimeout(() => abort.abort(), 3000);
-        const res = await fetch(BACKEND_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ start, destination: dest, preference: pref }),
-          signal: abort.signal,
-        });
-        clearTimeout(timer);
-        if (!res.ok) throw new Error('Server error');
-        const data = await res.json();
-        currentPolyline = data.polyline;
-        currentPois = data.points_of_interest || [];
+        currentRouteResponse = await fetchScoredRoute(start, dest);
+        currentRoute = getFirstRoute(currentRouteResponse);
+        currentPolyline = getRouteLatLngs(currentRoute);
+        if (!currentPolyline.length) throw new Error('The route did not include displayable geometry.');
+        currentPois = getRoutePois(currentRoute);
+        currentDestination = currentRouteResponse.destination?.display_name || dest;
+
+        renderRouteSummary(currentRouteResponse, currentRoute);
+        showScreen('screen-routes');
       } catch(e) {
-        // Backend not available — use cached coords or geocode, then get real walking route from OSRM
-        try {
-          const [startCoords, destCoords] = await Promise.all([
-            storedStartCoords ? Promise.resolve(storedStartCoords) : geocodeAddress(start),
-            storedDestCoords  ? Promise.resolve(storedDestCoords)  : geocodeAddress(dest),
-          ]);
-          console.log('Routing between', startCoords, '→', destCoords);
-          currentPolyline = await fetchWalkingRoute(startCoords, destCoords);
-        } catch(e2) {
-          console.error('OSRM fallback failed:', e2.message);
-          currentPolyline = DEMO_POLYLINE;
-        }
-        currentPois = DEMO_POIS;
+        console.error('generate-and-score failed:', e);
+        const corsHint = ' If this appears only in the browser, the hosted backend likely needs CORS enabled for this local origin.';
+        setApiError(`${e.message || 'Route request failed.'}${e instanceof TypeError ? corsHint : ''}`);
+      } finally {
+        startBtn.textContent = 'Start Navigation';
+        startBtn.disabled = false;
       }
-
-      currentDestination = dest;
-      showScreen('screen-nav');
-      setTimeout(() => initMap(currentPolyline, currentPois), 50);
-
-      startBtn.textContent = 'Start Navigation';
-      startBtn.disabled = false;
     }
 
     /* ── Screen 3: Leaflet map ── */
+    function goToNav() {
+      if (!currentPolyline?.length) {
+        setApiError('No route geometry is available yet. Enter addresses and generate a route first.');
+        showScreen('screen-start');
+        return;
+      }
+
+      document.getElementById('streetName').textContent = 'Recommended route';
+      document.getElementById('timeVal').textContent = formatDuration(currentRoute?.duration_s);
+      document.getElementById('distanceText').textContent = formatDistance(currentRoute?.distance_m);
+      document.getElementById('sidewalkInstruction').textContent = 'Follow recommended route';
+      document.getElementById('instructionText').textContent = 'Continue ahead';
+
+      showScreen('screen-nav');
+      setTimeout(() => initMap(currentPolyline, currentPois), 50);
+    }
+
     function initMap(coords, pois) {
       if (leafletMap) { leafletMap.remove(); leafletMap = null; }
 
@@ -904,6 +1088,7 @@
       // Points of interest
       (pois || []).forEach(poi => {
         const cfg = POI_CONFIG[poi.type] || { bg: '#6B7280', emoji: '📍', label: poi.type };
+        const label = poi.label || cfg.label;
         const icon = L.divIcon({
           html: `<div style="background:${cfg.bg};width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;">${cfg.emoji}</div>`,
           iconSize: [36, 36], iconAnchor: [18, 18], className: '',
@@ -911,8 +1096,12 @@
         const isHazard   = ['cracked_sidewalk','unmarked_crosswalk'].includes(poi.type);
         const isRestStop = ['bench','stone_wall'].includes(poi.type);
         L.marker([poi.lat, poi.lng], { icon })
+<<<<<<< HEAD
+          .bindPopup(`<div style="font-size:14px;max-width:200px;">${escapeHtml(label)}</div>`, { maxWidth: 220 })
+=======
           .bindPopup(`<div style="font-size:14px;max-width:200px;">${cfg.label}</div>`, { maxWidth: 220 })
           .on('popupopen', () => signalVest(isHazard ? 'hazard' : isRestStop ? 'reststop' : 'turn'))
+>>>>>>> upstream/main
           .addTo(leafletMap);
       });
 
@@ -922,7 +1111,12 @@
     function goToCelebration() {
       navTimers.forEach(clearTimeout);
       document.getElementById('celDestName').textContent = currentDestination || 'your destination';
+<<<<<<< HEAD
+      document.getElementById('celMinutes').textContent = currentRoute?.duration_s ? Math.max(1, Math.round(currentRoute.duration_s / 60)) : '--';
+      document.getElementById('celMiles').textContent = currentRoute?.distance_m ? (currentRoute.distance_m / 1609.344).toFixed(2) : '--';
+=======
       signalVest('arrived');
+>>>>>>> upstream/main
       spawnConfetti();
       showScreen('screen-celebration');
     }
