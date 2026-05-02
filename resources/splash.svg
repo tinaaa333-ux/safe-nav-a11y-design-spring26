@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+  <rect width="2732" height="2732" fill="#ffffff"/>
+  <g transform="translate(854 690)">
+    <rect width="1024" height="1024" rx="224" fill="#1E5EFF"/>
+    <path d="M512 152 238 255v209c0 199 115 352 274 420 159-68 274-221 274-420V255L512 152Z" fill="#ffffff"/>
+    <path d="M512 276 390 696l122-68 122 68-122-420Z" fill="#1E5EFF"/>
+  </g>
+  <text x="1366" y="1910" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="148" font-weight="800" fill="#111111">SafeNav</text>
+</svg>
