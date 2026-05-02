@@ -1,0 +1,27 @@
+{
+  "name": "safenav-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "cap:sync": "npx cap sync",
+    "cap:copy": "npx cap copy",
+    "ios": "npm run build && npx cap run ios",
+    "android": "npm run build && npx cap run android",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.2.0",
+    "@capacitor/core": "^7.2.0",
+    "@capacitor/ios": "^7.2.0",
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.2.0",
+    "vite": "^6.3.4"
+  }
+}

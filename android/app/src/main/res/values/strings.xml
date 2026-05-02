@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SafeNav</string>
+    <string name="title_activity_main">SafeNav</string>
+    <string name="package_name">edu.tufts.safenav</string>
+    <string name="custom_url_scheme">edu.tufts.safenav</string>
+</resources>
