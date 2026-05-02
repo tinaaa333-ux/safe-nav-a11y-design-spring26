@@ -2,9 +2,378 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <title>SafeNav - Accessible Navigation</title>
-  <script type="module" src="/src/main.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SafeNav – Accessible Navigation</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    .hidden { display: none !important; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #fff; color: #111;
+      max-width: 430px; margin: 0 auto; min-height: 100vh;
+    }
+
+    /* ── Screen management ── */
+    .screen { display: none; }
+    .screen.active { display: flex; flex-direction: column; }
+
+
+    /* ══════════════════════════════
+       SCREEN 1 — Start
+    ══════════════════════════════ */
+    #screen-start { min-height: 100vh; }
+
+    .start-header { padding: 64px 24px 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+    .brand h1 { font-size: 36px; font-weight: 900; color: #1E5EFF; line-height: 1; }
+    .brand p { font-size: 14px; color: #4A4A4A; font-weight: 500; }
+    .page-title { display: flex; align-items: center; gap: 10px; }
+    .page-title h2 { font-size: 28px; font-weight: 600; color: #111; }
+
+    .start-main { padding: 0 24px 160px; flex: 1; }
+    .section-label { font-size: 16px; font-weight: 500; color: #111; margin-bottom: 12px; }
+
+    .current-location {
+      background: #F2F4F7; border: 2px solid #D0D5DD; border-radius: 16px;
+      padding: 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 24px;
+    }
+    .pulse-dot {
+      width: 12px; height: 12px; border-radius: 50%; background: #1E5EFF;
+      flex-shrink: 0; animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+
+    .input-wrap { position: relative; }
+    .input-wrap svg {
+      position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+      width: 24px; height: 24px; color: #4A4A4A; pointer-events: none;
+    }
+    .input-wrap input {
+      width: 100%; padding: 20px 24px 20px 56px; font-size: 16px;
+      border: 2px solid #D0D5DD; border-radius: 16px; color: #111;
+      background: #fff; outline: none; transition: border-color .2s, box-shadow .2s;
+    }
+    .input-wrap input:focus { border-color: #1E5EFF; box-shadow: 0 0 0 4px rgba(30,94,255,.1); }
+    .input-wrap input::placeholder { color: #aaa; }
+
+    .dest-section { margin-bottom: 24px; }
+    .saved-section { margin-bottom: 32px; }
+    .locations-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .loc-card {
+      background: #F2F4F7; border: 2px solid #D0D5DD; border-radius: 16px;
+      padding: 16px; cursor: pointer; text-align: left; width: 100%;
+      transition: border-color .2s, background .2s;
+    }
+    .loc-card:hover { border-color: #1E5EFF; }
+    .loc-card.active { background: #F0F5FF; border-color: #1E5EFF; }
+    .loc-emoji { font-size: 28px; display: block; margin-bottom: 8px; }
+    .loc-name { font-size: 15px; font-weight: 700; color: #111; display: block; }
+    .loc-addr { font-size: 13px; color: #4A4A4A; display: block; margin-top: 2px; }
+
+    /* Autocomplete dropdown */
+    .input-wrap { position: relative; }
+    .ac-dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: #fff; border: 2px solid #1E5EFF; border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 200;
+      overflow: hidden; display: none;
+    }
+    .ac-dropdown.open { display: block; }
+    .ac-item {
+      padding: 14px 20px; font-size: 15px; color: #111; cursor: pointer;
+      border-bottom: 1px solid #F2F4F7; transition: background .1s;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ac-item:last-child { border-bottom: none; }
+    .ac-item:hover, .ac-item:focus { background: #F0F5FF; outline: none; }
+
+    /* Route preference pills */
+    .prefs { margin-bottom: 32px; }
+    .saved-hint { font-size: 13px; color: #6B7280; margin-bottom: 12px; }
+    .route-pref-group { display: flex; flex-direction: column; gap: 10px; }
+    .route-pref-btn {
+      width: 100%; padding: 18px 20px; background: #F2F4F7;
+      border: 2px solid #D0D5DD; border-radius: 16px;
+      font-size: 16px; font-weight: 600; color: #111;
+      cursor: pointer; text-align: left; transition: border-color .15s, background .15s;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .route-pref-btn:hover { border-color: #1E5EFF; }
+    .route-pref-btn.active { background: #F0F5FF; border-color: #1E5EFF; color: #1E5EFF; }
+    .pref-icon { font-size: 22px; flex-shrink: 0; }
+
+    .start-wrap {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px; padding: 16px 24px 32px;
+      background: linear-gradient(to top, #fff 70%, transparent);
+    }
+    .start-btn {
+      width: 100%; padding: 22px; border-radius: 16px; border: none;
+      background: #D0D5DD; color: #fff; font-size: 18px; font-weight: 600;
+      cursor: not-allowed; transition: background .2s;
+    }
+    .start-btn.active {
+      background: #1E5EFF; cursor: pointer;
+      box-shadow: 0 8px 24px rgba(30,94,255,.35);
+    }
+    .start-btn.active:hover { background: #1650EE; }
+
+
+    /* ══════════════════════════════
+       SCREEN 2 — Route Options
+    ══════════════════════════════ */
+    #screen-routes { padding: 64px 24px 48px; min-height: 100vh; }
+
+    .back-btn {
+      background: none; border: none; cursor: pointer; padding: 8px;
+      margin-bottom: 16px; display: flex; align-items: center;
+      border-radius: 12px; transition: background .15s; margin-left: -8px;
+    }
+    .back-btn:hover { background: #F2F4F7; }
+
+    .route-page-header { margin-bottom: 28px; }
+    .route-page-header h1 { font-size: 26px; font-weight: 800; color: #111; margin-bottom: 4px; }
+    .route-page-header p { font-size: 16px; color: #4A4A4A; }
+
+    .route-card {
+      background: #F0F5FF; border: 2px solid #1E5EFF; border-radius: 18px;
+      padding: 22px; margin-bottom: 16px; cursor: pointer; width: 100%;
+      text-align: left; transition: border-width .15s, transform .15s, box-shadow .15s;
+    }
+    .route-card:hover {
+      border-width: 3px; transform: scale(1.02);
+      box-shadow: 0 8px 24px rgba(30,94,255,.15);
+    }
+    .card-top {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 12px; margin-bottom: 14px;
+    }
+    .card-left { display: flex; align-items: flex-start; gap: 14px; }
+    .card-title h2 { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 2px; }
+    .card-title p { font-size: 14px; color: #4A4A4A; }
+    .time-badge {
+      background: #1E5EFF; color: white; border-radius: 10px;
+      padding: 8px 14px; font-size: 15px; font-weight: 700;
+      white-space: nowrap; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    }
+    .tags { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+    .tag {
+      background: #1E5EFF; color: white; border-radius: 20px;
+      padding: 6px 14px; font-size: 13px; font-weight: 600;
+    }
+    .card-divider { border: none; border-top: 1px solid rgba(30,94,255,.2); margin-bottom: 14px; }
+    .stats { display: flex; gap: 24px; }
+    .stat { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #111; font-weight: 500; }
+
+    .route-live-summary.hidden { display: none; }
+    .route-live-summary { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+    .route-meta {
+      background: #F8FAFC; border: 2px solid #D0D5DD; border-radius: 18px;
+      padding: 18px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .route-meta-row { display: flex; gap: 10px; align-items: flex-start; }
+    .route-meta-label {
+      min-width: 44px; color: #4A4A4A; font-size: 12px; font-weight: 800;
+      letter-spacing: .05em; text-transform: uppercase;
+    }
+    .route-meta-value { color: #111; font-size: 14px; font-weight: 600; line-height: 1.35; }
+    .route-metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .route-metric {
+      background: white; border: 1px solid #E5E7EB; border-radius: 14px;
+      padding: 12px;
+    }
+    .route-metric-value { font-size: 20px; font-weight: 800; color: #111; margin-bottom: 2px; }
+    .route-metric-label { font-size: 12px; font-weight: 700; color: #4A4A4A; }
+    .route-info-row { display: flex; flex-direction: column; gap: 8px; }
+    .route-info-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: none; border: 1px solid #CBD5E1; border-radius: 20px;
+      padding: 6px 12px; font-size: 13px; font-weight: 600; color: #475569;
+      cursor: pointer; align-self: flex-start;
+    }
+    .route-info-btn:hover { background: #F1F5F9; }
+    .route-explanation {
+      background: #FFF7ED; border: 1px solid #FED7AA; color: #7C2D12;
+      border-radius: 14px; padding: 12px; font-size: 14px; font-weight: 600; line-height: 1.4;
+    }
+    .recommended-route-card { cursor: pointer; margin-bottom: 0; }
+
+
+    /* ══════════════════════════════
+       SCREEN 3 — Navigation
+    ══════════════════════════════ */
+    #screen-nav { height: 100vh; overflow: hidden; }
+
+    .map-half { height: 50vh; position: relative; background: #F7F7F7; flex-shrink: 0; }
+    .map-half svg.map-svg { width: 100%; height: 100%; }
+
+    .map-label {
+      position: absolute; top: 16px; left: 16px;
+      background: rgba(255,255,255,.98); border-radius: 12px;
+      padding: 10px 16px; box-shadow: 0 2px 8px rgba(0,0,0,.12);
+    }
+    .map-label .on-lbl { font-size: 12px; color: #4A4A4A; }
+    .map-label .street { font-size: 18px; font-weight: 600; color: #111; }
+
+    .time-chip {
+      position: absolute; top: 16px; right: 16px;
+      background: #1E5EFF; border-radius: 12px;
+      padding: 10px 16px; box-shadow: 0 2px 8px rgba(30,94,255,.3);
+    }
+    .time-chip .arr-lbl { font-size: 12px; color: rgba(255,255,255,.85); }
+    .time-chip .arr-val { font-size: 18px; font-weight: 700; color: white; }
+
+    .map-ctrl {
+      position: absolute; top: 90px;
+      background: white; border: none; border-radius: 12px;
+      padding: 12px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .map-ctrl:hover { background: #F2F4F7; }
+    .map-ctrl.left { left: 16px; }
+    .map-ctrl.right { right: 16px; }
+
+    .arrived-btn {
+      position: absolute; bottom: 72px; right: 16px;
+      background: #10B981; color: white; border: none; border-radius: 12px;
+      padding: 10px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(16,185,129,.4); transition: opacity .15s;
+    }
+    .arrived-btn:hover { opacity: .9; }
+
+    .sidewalk-badge {
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: #1E5EFF; color: white; border-radius: 999px;
+      padding: 10px 24px; display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 4px 16px rgba(30,94,255,.4); border: 2px solid white; white-space: nowrap;
+    }
+    .sidewalk-badge span { font-size: 16px; font-weight: 700; text-transform: uppercase; }
+
+    .nav-half { flex: 1; display: flex; flex-direction: column; background: white; overflow: hidden; }
+    .sidewalk-bar { background: #1E5EFF; margin: 16px 24px 0; border-radius: 16px; padding: 16px 20px; }
+    .sidewalk-bar p { font-size: 20px; font-weight: 700; color: white; text-align: center; }
+    .direction-area {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 0 24px;
+    }
+    .instruction-text { font-size: 42px; font-weight: 900; color: #111; text-align: center; line-height: 1.1; margin-bottom: 8px; }
+    .distance-text { font-size: 30px; font-weight: 700; color: #111; text-align: center; }
+    .pause-btn {
+      margin: 0 24px 12px; padding: 18px; background: #F2F4F7;
+      border: 2px solid #D0D5DD; border-radius: 16px; font-size: 18px;
+      font-weight: 600; color: #111; cursor: pointer; transition: background .15s, border-color .15s;
+    }
+    .pause-btn:hover { background: #E5E7EB; border-color: #111; }
+    .end-nav-btn {
+      margin: 0 24px 24px; padding: 16px; background: #fff;
+      border: 2px solid #D0D5DD; border-radius: 16px; font-size: 16px;
+      font-weight: 600; color: #666; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+    }
+    .end-nav-btn:hover { background: #FFF0F0; border-color: #D00; color: #D00; }
+
+    .terrain-alert {
+      position: absolute; top: calc(50vh - 80px); left: 16px; right: 16px;
+      background: white; border: 3px solid #111; border-radius: 18px;
+      padding: 20px 24px; display: flex; align-items: center; gap: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.2); z-index: 20;
+      animation: slideDown .3s ease-out;
+    }
+    .terrain-alert.hidden { display: none; }
+    @keyframes slideDown { from{transform:translateY(-20px);opacity:0} to{transform:translateY(0);opacity:1} }
+    .terrain-alert p { font-size: 20px; font-weight: 700; color: #111; }
+
+
+    /* ══════════════════════════════
+       SCREEN 4 — Celebration
+    ══════════════════════════════ */
+    #screen-celebration {
+      min-height: 100vh; align-items: center; justify-content: center;
+      padding: 48px 24px; position: relative; overflow: hidden;
+    }
+    .confetti-piece { position: fixed; top: -10px; animation: fall linear forwards; }
+    @keyframes fall { 0%{transform:translateY(0) rotate(0deg);opacity:1} 100%{transform:translateY(110vh) rotate(720deg);opacity:0} }
+
+    .celebration-content { display: flex; flex-direction: column; align-items: center; width: 100%; z-index: 10; }
+    .check-wrap { position: relative; margin-bottom: 28px; display: flex; align-items: center; justify-content: center; }
+    .check-halo {
+      position: absolute; width: 160px; height: 160px; border-radius: 50%;
+      background: rgba(30,94,255,.15); animation: halo-pulse 2s ease-in-out infinite;
+    }
+    @keyframes halo-pulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.2);opacity:1} }
+    .check-circle {
+      width: 110px; height: 110px; border-radius: 50%; background: #1E5EFF;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 32px rgba(30,94,255,.4); position: relative;
+    }
+    .cel-h1 { font-size: 44px; font-weight: 900; color: #111; text-align: center; margin-bottom: 12px; line-height: 1.1; }
+    .cel-sub { font-size: 20px; font-weight: 600; color: #111; text-align: center; margin-bottom: 6px; }
+    .cel-dest { font-size: 26px; font-weight: 700; color: #1E5EFF; text-align: center; margin-bottom: 28px; }
+    .celebrate-box {
+      background: #F0F5FF; border: 2px solid #1E5EFF; border-radius: 18px;
+      padding: 20px 24px; margin-bottom: 28px; width: 100%;
+    }
+    .celebrate-box p { font-size: 18px; color: #111; text-align: center; font-weight: 500; line-height: 1.5; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; width: 100%; }
+    .stat-box { background: #F2F4F7; border-radius: 14px; padding: 16px; text-align: center; }
+    .stat-num { font-size: 28px; font-weight: 700; color: #111; margin-bottom: 4px; }
+    .stat-lbl { font-size: 13px; font-weight: 500; color: #4A4A4A; }
+    .home-btn {
+      width: 100%; padding: 20px; background: #1E5EFF; color: white;
+      border: none; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      gap: 10px; box-shadow: 0 8px 24px rgba(30,94,255,.35); transition: opacity .15s;
+    }
+    .home-btn:hover { opacity: .9; }
+
+
+    /* ══════════════════════════════
+       Grounding Modal (shared)
+    ══════════════════════════════ */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7);
+      z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: white; border-radius: 24px; padding: 32px;
+      max-width: 380px; width: 100%; box-shadow: 0 24px 64px rgba(0,0,0,.3);
+    }
+    .modal-box h2 { font-size: 18px; font-weight: 700; color: #111; text-align: center; margin-bottom: 10px; line-height: 1.4; }
+    .modal-sub { font-size: 16px; color: #4A4A4A; text-align: center; margin-bottom: 24px; font-weight: 500; line-height: 1.5; }
+    .modal-counter { font-size: 12px; color: #aaa; text-align: center; margin-bottom: 6px; font-weight: 500; letter-spacing: 0.5px; text-transform: uppercase; }
+    .modal-next-btn {
+      width: 100%; padding: 14px; background: none; color: #1E5EFF;
+      border: 2px solid #1E5EFF; border-radius: 16px; font-size: 16px; font-weight: 600;
+      cursor: pointer; margin-bottom: 10px; transition: background .15s, color .15s;
+    }
+    .modal-next-btn:hover { background: #1E5EFF; color: white; }
+    .breath-wrap { display: flex; align-items: center; justify-content: center; height: 180px; margin-bottom: 32px; }
+    .breath-outer {
+      width: 140px; height: 140px; border-radius: 50%;
+      background: rgba(30,94,255,.2); display: flex; align-items: center; justify-content: center;
+    }
+    .breath-outer.playing { animation: breathe 4s ease-in-out infinite; }
+    @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.3)} }
+    .breath-inner { width: 110px; height: 110px; border-radius: 50%; background: rgba(30,94,255,.4); display: flex; align-items: center; justify-content: center; }
+    .breath-core { width: 84px; height: 84px; border-radius: 50%; background: #1E5EFF; }
+    .modal-play-btn {
+      width: 100%; padding: 18px; background: #1E5EFF; color: white;
+      border: none; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      gap: 10px; margin-bottom: 12px; transition: opacity .15s;
+      box-shadow: 0 4px 16px rgba(30,94,255,.35);
+    }
+    .modal-play-btn:hover { opacity: .9; }
+    .modal-resume-btn {
+      width: 100%; padding: 18px; background: white; color: #111;
+      border: 2px solid #111; border-radius: 16px; font-size: 18px; font-weight: 700;
+      cursor: pointer; transition: background .15s, color .15s;
+    }
+    .modal-resume-btn:hover { background: #111; color: white; }
+  </style>
 </head>
 <body>
 
@@ -315,5 +684,507 @@
     </div>
   </div>
 
+
+  <script>
+    /* ── Hosted routing API ── */
+    const GENERATE_AND_SCORE_URL = 'http://34.41.85.77:8000/routes/generate-and-score';
+
+    /* ── Vest (ESP32) ───────────────────────────────────────────────────────
+       Flash the ESP32 sketch, open Serial Monitor at 115200 baud, copy the
+       IP it prints, and paste it below (keep the http:// prefix).
+       Both devices must be on the same WiFi network.
+    ── */
+    const VEST_URL = 'http://192.168.1.XXX'; // ← replace with your ESP32's IP
+
+    async function signalVest(type) {
+      // type: 'turn' | 'hazard' | 'reststop' | 'arrived'
+      try {
+        await fetch(`${VEST_URL}/${type}`, { mode: 'no-cors' });
+      } catch(e) {
+        // Vest not connected — fail silently so app keeps working
+      }
+    }
+
+    /* ── State ── */
+    let currentDestination = '';
+    let currentPolyline = null;
+    let currentPois = [];
+    let currentRoute = null;
+    let currentRouteResponse = null;
+    let leafletMap = null;
+    let navTimers = [];
+
+    const POI_CONFIG = {
+      cracked_sidewalk:   { bg: '#F59E0B', emoji: '⚠️', label: 'Cracked sidewalk — switch to the other side of the street' },
+      unmarked_crosswalk: { bg: '#EF4444', emoji: '🛑', label: 'Unmarked crosswalk — stop and look both ways slowly before crossing' },
+      bench:              { bg: '#10B981', emoji: '🪑', label: 'Bench — rest stop available here' },
+      stone_wall:         { bg: '#10B981', emoji: '🧱', label: 'Stone wall — you can lean here for a rest' },
+      obstacle:           { bg: '#F59E0B', emoji: '⚠️', label: 'Reported route obstacle' },
+      crossing_issue:     { bg: '#EF4444', emoji: '🛑', label: 'Reported crossing issue' },
+      rest_stop:          { bg: '#10B981', emoji: '🪑', label: 'Rest stop' },
+    };
+
+    /* ── Screen routing ── */
+    function showScreen(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      window.scrollTo(0, 0);
+    }
+
+    /* ── Screen 1 logic ── */
+    const startInput = document.getElementById('startInput');
+    const destInput  = document.getElementById('destInput');
+    const startBtn   = document.getElementById('startBtn');
+    let lastFocused  = 'dest'; // which input was last focused
+    let acTimer      = null;
+
+    startInput.addEventListener('focus', () => { lastFocused = 'start'; });
+    destInput.addEventListener('focus',  () => { lastFocused = 'dest'; });
+    startInput.addEventListener('input', () => { updateReadyState(); triggerAc('start'); });
+    destInput.addEventListener('input',  () => { updateReadyState(); triggerAc('dest'); });
+    startInput.addEventListener('blur',  () => setTimeout(() => closeAc('start'), 200));
+    destInput.addEventListener('blur',   () => setTimeout(() => closeAc('dest'),  200));
+    [startInput, destInput].forEach(input => {
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && startBtn.classList.contains('active') && !startBtn.disabled) {
+          startNav();
+        }
+      });
+    });
+
+    function updateReadyState() {
+      const ready = !!startInput.value.trim() && !!destInput.value.trim();
+      startBtn.classList.toggle('active', ready);
+    }
+
+    function setApiError(message) {
+      const errorEl = document.getElementById('apiError');
+      if (!message) {
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+        return;
+      }
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+    }
+
+    /* Nominatim autocomplete */
+    function triggerAc(field) {
+      clearTimeout(acTimer);
+      const input = field === 'start' ? startInput : destInput;
+      const q = input.value.trim();
+      if (q.length < 3) { closeAc(field); return; }
+      acTimer = setTimeout(() => fetchAc(q, field), 320);
+    }
+    async function fetchAc(q, field) {
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=us&addressdetails=1&viewbox=-71.20,42.35,-71.00,42.45&bounded=0`;
+        const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+        const items = await res.json();
+        renderAc(items, field);
+      } catch(e) { /* network unavailable – silently skip */ }
+    }
+    function formatAcLabel(it) {
+      const a = it.address || {};
+      const num    = (a.house_number || '').split(';')[0].split(',')[0].trim();
+      const road   = a.road || a.pedestrian || a.footway || '';
+      const city   = a.city || a.town || a.village || a.hamlet || '';
+      const state  = a.state ? a.state.replace('Massachusetts','MA') : '';
+      if (road) return [num ? `${num} ${road}` : road, city, state].filter(Boolean).join(', ');
+      return it.display_name.split(',').slice(0,3).join(',').trim();
+    }
+    function renderAc(items, field) {
+      const drop = document.getElementById(`ac-${field}`);
+      if (!items.length) { drop.classList.remove('open'); return; }
+      drop.innerHTML = items.map(it => {
+        const label = formatAcLabel(it);
+        return `<div class="ac-item" tabindex="-1"
+          data-name="${label.replace(/"/g, '&quot;')}"
+          data-lat="${it.lat}" data-lon="${it.lon}">${label}</div>`;
+      }).join('');
+      drop.querySelectorAll('.ac-item').forEach(el => {
+        el.addEventListener('mousedown', e => e.preventDefault());
+        el.addEventListener('click', () => pickAc(
+          field, el.dataset.name,
+          parseFloat(el.dataset.lat), parseFloat(el.dataset.lon)
+        ));
+      });
+      drop.classList.add('open');
+    }
+    function pickAc(field, name, lat, lon) {
+      const input = field === 'start' ? startInput : destInput;
+      input.value = name;
+      closeAc(field);
+      updateReadyState();
+    }
+    function closeAc(field) {
+      document.getElementById(`ac-${field}`).classList.remove('open');
+    }
+
+    function selectLoc(card) {
+      const input = lastFocused === 'start' ? startInput : destInput;
+      input.value = card.dataset.name;
+      updateReadyState();
+      /* highlight the card briefly */
+      document.querySelectorAll('.loc-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      setTimeout(() => card.classList.remove('active'), 800);
+    }
+
+    function selectPref(btn) {
+      document.querySelectorAll('.route-pref-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      });
+      btn.classList.add('active');
+      btn.setAttribute('aria-pressed', 'true');
+    }
+
+    async function fetchWithTimeout(url, options = {}, ms = 8000) {
+      const abort = new AbortController();
+      const timer = setTimeout(() => abort.abort(), ms);
+      try {
+        const res = await fetch(url, { ...options, signal: abort.signal });
+        clearTimeout(timer);
+        return res;
+      } catch(e) { clearTimeout(timer); throw e; }
+    }
+
+    async function fetchScoredRoute(originText, destinationText) {
+      const payload = {
+        origin: { address: originText },
+        destination: { address: destinationText },
+        mode: 'pedestrian',
+        alternatives: 1,
+      };
+
+      console.log('generate-and-score request:', payload);
+      const res = await fetchWithTimeout(GENERATE_AND_SCORE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }, 30000);
+      console.log('generate-and-score status:', res.status);
+
+      if (!res.ok) {
+        throw new Error(await readBackendError(res));
+      }
+
+      const data = await res.json();
+      console.log('generate-and-score response:', data);
+      return data;
+    }
+
+    async function readBackendError(res) {
+      try {
+        const data = await res.json();
+        const message = data?.error?.message || data?.detail || data?.message;
+        if (message) return `Backend ${res.status}: ${message}`;
+      } catch(e) {
+        // Fall through to a status-only error.
+      }
+      return `Backend ${res.status}: ${res.statusText || 'route request failed'}`;
+    }
+
+    function getFirstRoute(data) {
+      const route = data?.routes?.[0];
+      if (!route) throw new Error('No routes were returned for those addresses.');
+      return route;
+    }
+
+    function getRouteLatLngs(route) {
+      const coords = route?.geojson?.coordinates || route?.decoded_shape || [];
+      return coords.map(point => [point[1], point[0]]).filter(point => Number.isFinite(point[0]) && Number.isFinite(point[1]));
+    }
+
+    function getFeaturePoint(feature) {
+      const coords = feature?.geojson?.coordinates;
+      const lng = feature?.geometry?.x ?? coords?.[0];
+      const lat = feature?.geometry?.y ?? coords?.[1];
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return { lat, lng };
+    }
+
+    function getRoutePois(route) {
+      const raw = route?.score?.raw_arcgis || {};
+      const obstacles = (raw.pois || []).map(feature => {
+        const point = getFeaturePoint(feature);
+        if (!point) return null;
+        const attrs = feature.attributes || {};
+        const category = String(attrs.obstacle_category || '').toLowerCase();
+        const type = category.includes('cross') ? 'crossing_issue' : 'obstacle';
+        const detail = [attrs.obstacle_category, attrs.obstacle_type, attrs.severity].filter(Boolean).join(' · ');
+        return { ...point, type, label: detail || POI_CONFIG[type].label };
+      }).filter(Boolean);
+
+      const restStops = (raw.rest_stops || []).map(feature => {
+        const point = getFeaturePoint(feature);
+        if (!point) return null;
+        const attrs = feature.attributes || {};
+        const label = attrs.name || attrs.Name || attrs.type || attrs.Type || POI_CONFIG.rest_stop.label;
+        return { ...point, type: 'rest_stop', label };
+      }).filter(Boolean);
+
+      return [...obstacles, ...restStops];
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[char]);
+    }
+
+    function shortPlace(value) {
+      const text = String(value || '').trim();
+      if (!text) return 'your destination';
+      return text.split(',').slice(0, 2).join(',').trim();
+    }
+
+    function formatDistance(meters) {
+      if (!Number.isFinite(meters)) return 'Unknown';
+      const miles = meters / 1609.344;
+      return miles >= 0.1 ? `${miles.toFixed(2)} mi` : `${Math.round(meters)} m`;
+    }
+
+    function formatDuration(seconds) {
+      if (!Number.isFinite(seconds)) return 'Unknown';
+      return `${Math.max(1, Math.round(seconds / 60))} min`;
+    }
+
+    function formatMetric(value, suffix = '') {
+      return value === null || value === undefined ? 'N/A' : `${value}${suffix}`;
+    }
+
+    function getRestStopNote(status) {
+      if (!status) return '';
+      if (status.configured && status.queried && status.available && status.authenticated !== false) return '';
+      return status.reason || 'Rest stop source reported limited availability.';
+    }
+
+    function renderRouteSummary(data, route) {
+      const summary = document.getElementById('routeSummary');
+      const originName = data?.origin?.display_name || data?.origin?.address || startInput.value.trim();
+      const destinationName = data?.destination?.display_name || data?.destination?.address || destInput.value.trim();
+      const score = route.score || {};
+      const metrics = score.metrics || {};
+      const pointCount = route.geojson?.coordinates?.length || route.decoded_shape?.length || metrics.route_point_count || currentPolyline?.length || 0;
+      const restStopNote = getRestStopNote(score.rest_stop_source_status);
+
+      document.getElementById('routeDestLabel').textContent = `To ${shortPlace(destinationName)}`;
+      document.querySelectorAll('#screen-routes > .route-card').forEach(card => { card.hidden = true; });
+
+      summary.innerHTML = `
+        <div class="route-meta">
+          <div class="route-meta-row">
+            <div class="route-meta-label">From</div>
+            <div class="route-meta-value">${escapeHtml(shortPlace(originName))}</div>
+          </div>
+          <div class="route-meta-row">
+            <div class="route-meta-label">To</div>
+            <div class="route-meta-value">${escapeHtml(shortPlace(destinationName))}</div>
+          </div>
+        </div>
+
+        <button class="route-card recommended-route-card" onclick="goToNav('recommended')" aria-label="Open recommended route on map">
+          <div class="card-top">
+            <div class="card-left">
+              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                <circle cx="20" cy="20" r="18" stroke="#1E5EFF" stroke-width="2.5"/>
+                <path d="M12 21 L18 27 L29 13" stroke="#1E5EFF" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div class="card-title">
+                <h2>Recommended Route</h2>
+                <p>${escapeHtml(route.route_id || 'Generated route')}</p>
+              </div>
+            </div>
+            <div class="time-badge">${escapeHtml(formatDuration(route.duration_s))}</div>
+          </div>
+          <div class="route-metrics-grid">
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatDistance(route.distance_m))}</div><div class="route-metric-label">Distance</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(score.overall_score))}</div><div class="route-metric-label">Overall score</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.obstacle_count))}</div><div class="route-metric-label">Obstacles</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.crossing_issue_count))}</div><div class="route-metric-label">Crossing issues</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.rest_stop_count))}</div><div class="route-metric-label">Rest stops</div></div>
+            <div class="route-metric"><div class="route-metric-value">${escapeHtml(formatMetric(metrics.avg_rest_quality))}</div><div class="route-metric-label">Avg rest quality</div></div>
+          </div>
+        </button>
+
+        ${score.explanation ? `
+        <div class="route-info-row">
+          <button class="route-info-btn" aria-label="Why this route scores well" aria-expanded="false" onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded')==='true'?'false':'true'); this.nextElementSibling.classList.toggle('hidden');">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="8" stroke-width="3"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+            Why this route
+          </button>
+          <div class="route-explanation hidden">${escapeHtml(score.explanation)}</div>
+        </div>` : ''}
+      `;
+      summary.classList.remove('hidden');
+    }
+
+    async function startNav() {
+      const start = startInput.value.trim();
+      const dest  = destInput.value.trim();
+      if (!start || !dest) return;
+
+      setApiError('');
+      startBtn.textContent = 'Finding route...';
+      startBtn.disabled = true;
+
+      try {
+        currentRouteResponse = await fetchScoredRoute(start, dest);
+        currentRoute = getFirstRoute(currentRouteResponse);
+        currentPolyline = getRouteLatLngs(currentRoute);
+        if (!currentPolyline.length) throw new Error('The route did not include displayable geometry.');
+        currentPois = getRoutePois(currentRoute);
+        currentDestination = currentRouteResponse.destination?.display_name || dest;
+
+        renderRouteSummary(currentRouteResponse, currentRoute);
+        showScreen('screen-routes');
+      } catch(e) {
+        console.error('generate-and-score failed:', e);
+        const corsHint = ' If this appears only in the browser, the hosted backend likely needs CORS enabled for this local origin.';
+        setApiError(`${e.message || 'Route request failed.'}${e instanceof TypeError ? corsHint : ''}`);
+      } finally {
+        startBtn.textContent = 'Start Navigation';
+        startBtn.disabled = false;
+      }
+    }
+
+    /* ── Screen 3: Leaflet map ── */
+    function goToNav() {
+      if (!currentPolyline?.length) {
+        setApiError('No route geometry is available yet. Enter addresses and generate a route first.');
+        showScreen('screen-start');
+        return;
+      }
+
+      document.getElementById('streetName').textContent = 'Recommended route';
+      document.getElementById('timeVal').textContent = formatDuration(currentRoute?.duration_s);
+      document.getElementById('distanceText').textContent = formatDistance(currentRoute?.distance_m);
+      document.getElementById('sidewalkInstruction').textContent = 'Follow recommended route';
+      document.getElementById('instructionText').textContent = 'Continue ahead';
+
+      showScreen('screen-nav');
+      setTimeout(() => initMap(currentPolyline, currentPois), 50);
+    }
+
+    function initMap(coords, pois) {
+      if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+
+      leafletMap = L.map('leaflet-map', { zoomControl: false });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19,
+      }).addTo(leafletMap);
+
+      const poly = L.polyline(coords, {
+        color: '#1E5EFF', weight: 6, opacity: 0.9, lineJoin: 'round',
+      }).addTo(leafletMap);
+
+      // Start marker (blue)
+      L.circleMarker(coords[0], {
+        radius: 9, fillColor: '#1E5EFF', color: 'white', weight: 3, fillOpacity: 1,
+      }).addTo(leafletMap);
+
+      // End marker (green)
+      L.circleMarker(coords[coords.length - 1], {
+        radius: 9, fillColor: '#10B981', color: 'white', weight: 3, fillOpacity: 1,
+      }).addTo(leafletMap);
+
+      // Points of interest
+      (pois || []).forEach(poi => {
+        const cfg = POI_CONFIG[poi.type] || { bg: '#6B7280', emoji: '📍', label: poi.type };
+        const label = poi.label || cfg.label;
+        const icon = L.divIcon({
+          html: `<div style="background:${cfg.bg};width:36px;height:36px;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:18px;line-height:1;">${cfg.emoji}</div>`,
+          iconSize: [36, 36], iconAnchor: [18, 18], className: '',
+        });
+        const isHazard   = ['cracked_sidewalk','unmarked_crosswalk'].includes(poi.type);
+        const isRestStop = ['bench','stone_wall'].includes(poi.type);
+        L.marker([poi.lat, poi.lng], { icon })
+          .bindPopup(`<div style="font-size:14px;max-width:200px;">${escapeHtml(label)}</div>`, { maxWidth: 220 })
+          .on('popupopen', () => signalVest(isHazard ? 'hazard' : isRestStop ? 'reststop' : 'turn'))
+          .addTo(leafletMap);
+      });
+
+      leafletMap.fitBounds(poly.getBounds(), { padding: [40, 40] });
+    }
+
+    function goToCelebration() {
+      navTimers.forEach(clearTimeout);
+      document.getElementById('celDestName').textContent = currentDestination || 'your destination';
+      document.getElementById('celMinutes').textContent = currentRoute?.duration_s ? Math.max(1, Math.round(currentRoute.duration_s / 60)) : '--';
+      document.getElementById('celMiles').textContent = currentRoute?.distance_m ? (currentRoute.distance_m / 1609.344).toFixed(2) : '--';
+      signalVest('arrived');
+      spawnConfetti();
+      showScreen('screen-celebration');
+    }
+
+    let muted = false;
+    function toggleMute() {
+      muted = !muted;
+      document.getElementById('volIcon').innerHTML = muted
+        ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>'
+        : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>';
+    }
+
+    const groundingExercises = [
+      'Feel both feet on the ground. Wiggle your toes. Take another deep breath.',
+      'Take another deep breath in and smell the air around you. What do you notice? Take a final deep breath.',
+      'Slowly scan your head from left to right. Take in your surroundings. What do you notice? Take another deep breath.',
+      'If you are near a building or a tree, pause and put a hand on it. What is the texture? Take a deep breath.',
+      'Look around and think of three things you can see right now. Name them out loud, or quietly to yourself. Take a deep breath.',
+      'Calm your body and mind and listen. What are three sounds you hear? Name them out loud, or quietly to yourself. Take a deep breath.',
+      'Give yourself a hug. Squeeze as tightly as is comfortable for you. Take a deep breath.',
+      'Shake your hands out quickly for 5 seconds. Find stillness. Take a deep breath.',
+    ];
+    let groundingIndex = 0;
+
+    function showGroundingExercise(index) {
+      groundingIndex = index;
+      document.getElementById('groundingCounter').textContent = `Exercise ${index + 1} of ${groundingExercises.length}`;
+      document.getElementById('groundingPrompt').textContent = groundingExercises[index];
+    }
+
+    function openGrounding() {
+      showGroundingExercise(Math.floor(Math.random() * groundingExercises.length));
+      document.getElementById('groundingModal').classList.remove('hidden');
+    }
+
+    function nextGrounding() {
+      if (breathing) toggleBreath();
+      showGroundingExercise((groundingIndex + 1) % groundingExercises.length);
+    }
+
+    function closeGrounding() {
+      document.getElementById('groundingModal').classList.add('hidden');
+      if (breathing) toggleBreath();
+    }
+    let breathing = false;
+    function toggleBreath() {
+      breathing = !breathing;
+      document.getElementById('breathOuter').classList.toggle('playing', breathing);
+      document.getElementById('playBtn').innerHTML = breathing
+        ? '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Pause'
+        : '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg> Start Breathing Exercise';
+    }
+
+    /* ── Screen 4 logic ── */
+    function spawnConfetti() {
+      document.querySelectorAll('.confetti-piece').forEach(e => e.remove());
+      const colors = ['#1E5EFF','#FFC700','#10B981','#F59E0B','#EF4444','#8B5CF6'];
+      for (let i = 0; i < 60; i++) {
+        const el = document.createElement('div');
+        el.className = 'confetti-piece';
+        const size = 8 + Math.random() * 8;
+        el.style.cssText = `left:${Math.random()*100}%;width:${size}px;height:${size}px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>.5?'50%':'2px'};animation-duration:${2+Math.random()*2}s;animation-delay:${Math.random()}s;`;
+        document.body.appendChild(el);
+      }
+    }
+  </script>
 </body>
 </html>
